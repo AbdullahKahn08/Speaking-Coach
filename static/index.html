@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>English Speaking Coach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f4f2ef;          /* warm cream */
+      --surface: #ffffff;
+      --ink: #1a1a1a;         /* near-black for pills, headings */
+      --ink-soft: #4a4a4a;
+      --muted: #8a8a8a;
+      --line: #e6e3de;
+      --accent: #CF4647;      /* the red from the loader */
+      --dot: #d8d3cc;
+      --serif: 'Playfair Display', Georgia, serif;
+      --sans: 'Inter', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); }
+    body {
+      font-family: var(--sans);
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Dotted background pattern like the NYT reference */
+    .dot-bg {
+      background-image: radial-gradient(var(--dot) 1.5px, transparent 1.5px);
+      background-size: 18px 18px;
+    }
+
+    /* ── Layout ── */
+    .app-wrap { max-width: 1100px; margin: 0 auto; padding: 32px 40px 80px; }
+
+    /* ── Top nav ── */
+    nav.top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0 40px;
+    }
+    .brand {
+      font-family: var(--serif); font-weight: 900;
+      font-size: 22px; letter-spacing: -0.02em;
+    }
+    .tabs { display: flex; gap: 32px; align-items: center; }
+    .tab {
+      background: transparent; border: none; cursor: pointer;
+      font-family: var(--sans); font-size: 14px; font-weight: 500;
+      color: var(--muted); padding: 6px 0;
+      border-bottom: 2px solid transparent;
+      transition: color 200ms ease, border-color 200ms ease;
+    }
+    .tab:hover { color: var(--ink); }
+    .tab.active { color: var(--ink); border-bottom-color: var(--ink); }
+
+    /* ── Hero ── */
+    .hero {
+      display: grid; grid-template-columns: 1fr 320px;
+      gap: 48px; align-items: end;
+      padding: 40px 0 56px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 48px;
+    }
+    .hero h1 {
+      font-family: var(--serif); font-weight: 700;
+      font-size: clamp(48px, 7vw, 88px);
+      line-height: 0.95; letter-spacing: -0.02em;
+      margin: 0 0 20px;
+    }
+    .hero h1 em { font-style: italic; font-weight: 400; color: var(--accent); }
+    .hero .lede {
+      font-size: 15px; color: var(--ink-soft); max-width: 480px;
+      line-height: 1.65;
+    }
+    .hero-side {
+      background: var(--surface);
+      padding: 20px 24px;
+      border-radius: 20px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .hero-side .stat-label {
+      font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--muted); font-weight: 500;
+    }
+    .hero-side .stat-val {
+      font-family: var(--serif); font-weight: 700; font-size: 36px;
+      color: var(--ink); line-height: 1;
+    }
+
+    /* ── Section header ── */
+    .section-head {
+      margin: 48px 0 20px;
+      display: flex; align-items: baseline; gap: 16px;
+    }
+    .section-head h2 {
+      font-family: var(--serif); font-weight: 700;
+      font-size: 32px; letter-spacing: -0.01em; margin: 0;
+    }
+    .section-head .num {
+      font-family: var(--sans); font-size: 12px;
+      color: var(--muted); font-weight: 500; letter-spacing: 0.1em;
+    }
+
+    /* ── Form + Uploader card ── */
+    .form-card {
+      background: var(--surface);
+      border-radius: 24px;
+      padding: 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .form-card::before {
+      content: ''; position: absolute; top: -40px; right: -40px;
+      width: 200px; height: 200px; border-radius: 50%;
+      background: var(--ink); opacity: 0.04;
+    }
+    .form-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+      margin-bottom: 32px;
+      position: relative; z-index: 1;
+    }
+    .field label {
+      display: block;
+      font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); font-weight: 500;
+      margin-bottom: 8px;
+    }
+    .input {
+      width: 100%; padding: 12px 0;
+      background: transparent;
+      border: none; border-bottom: 1px solid var(--line);
+      font: inherit; font-size: 16px; color: var(--ink);
+      outline: none;
+      transition: border-color 200ms ease;
+    }
+    .input:focus { border-color: var(--ink); }
+    .input::placeholder { color: var(--muted); font-weight: 300; }
+
+    .uploader {
+      display: block; width: 100%; box-sizing: border-box;
+      background: var(--bg);
+      border: 1.5px dashed var(--line);
+      border-radius: 20px;
+      padding: 40px 24px; text-align: center;
+      cursor: pointer;
+      transition: border-color 200ms ease, background 200ms ease;
+      position: relative; z-index: 1;
+    }
+    .uploader:hover, .uploader.dragging {
+      border-color: var(--ink); background: var(--surface);
+    }
+    .uploader-icon {
+      width: 44px; height: 44px; margin: 0 auto 12px;
+      background: var(--ink); border-radius: 50%;
+      display: grid; place-items: center; color: var(--bg);
+      font-size: 20px;
+    }
+    .uploader .title {
+      font-family: var(--serif); font-weight: 700; font-size: 22px;
+      letter-spacing: -0.01em; color: var(--ink);
+    }
+    .uploader .sub {
+      font-size: 12px; color: var(--muted); margin-top: 6px;
+      letter-spacing: 0.06em;
+    }
+    .uploader input { display: none; }
+    .selected-file {
+      margin-top: 14px; font-size: 13px; font-weight: 500;
+      color: var(--accent);
+    }
+
+    .audio-preview-wrap {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 16px 20px;
+      margin-top: 20px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .audio-preview-wrap .icon-dot {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--ink); color: var(--bg);
+      display: grid; place-items: center; flex: none;
+      font-size: 14px;
+    }
+    .audio-preview-wrap audio {
+      flex: 1; height: 36px;
+    }
+
+    /* ── Source toggle (upload vs record) ── */
+    .source-toggle {
+      display: inline-flex; padding: 4px;
+      background: var(--bg); border-radius: 999px;
+      margin-bottom: 24px; position: relative; z-index: 1;
+    }
+    .source-toggle button {
+      background: transparent; border: none; cursor: pointer;
+      padding: 8px 20px; border-radius: 999px;
+      font-family: var(--sans); font-size: 13px; font-weight: 500;
+      color: var(--muted);
+      transition: all 200ms ease;
+    }
+    .source-toggle button.active {
+      background: var(--ink); color: var(--bg);
+    }
+
+    /* ── Recorder ── */
+    .recorder {
+      background: var(--bg);
+      border-radius: 20px;
+      padding: 40px 24px; text-align: center;
+      position: relative; z-index: 1;
+    }
+    .waveform {
+      width: 100%; height: 80px;
+      margin: 8px 0 24px;
+      display: block;
+    }
+    .rec-btn {
+      width: 72px; height: 72px; border-radius: 50%;
+      border: none; cursor: pointer; margin: 0 auto 16px;
+      background: var(--accent); color: var(--bg);
+      display: grid; place-items: center;
+      font-size: 28px;
+      transition: transform 200ms ease, box-shadow 200ms ease;
+      box-shadow: 0 0 0 0 rgba(207, 70, 71, 0.4);
+    }
+    .rec-btn:hover:not(.recording) { transform: scale(1.05); }
+    .rec-btn.recording {
+      background: var(--ink);
+      animation: pulse 1.4s ease-out infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(207, 70, 71, 0.5); }
+      70% { box-shadow: 0 0 0 20px rgba(207, 70, 71, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(207, 70, 71, 0); }
+    }
+    .rec-status {
+      font-family: var(--serif); font-style: italic; font-size: 18px;
+      color: var(--ink); margin-bottom: 4px;
+    }
+    .rec-timer {
+      font-family: var(--sans); font-size: 13px; letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    /* ── Corrected transcript with highlights ── */
+    .corrected-card {
+      background: var(--surface);
+      border-radius: 24px; padding: 32px 40px;
+      margin-top: 16px;
+      border-left: 4px solid var(--accent);
+    }
+    .corrected-card .label {
+      font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--muted); font-weight: 500; margin-bottom: 12px;
+    }
+    .corrected-text {
+      font-family: var(--serif); font-size: 22px; line-height: 1.55;
+      color: var(--ink);
+    }
+    .corrected-text mark {
+      background: transparent;
+      color: var(--accent);
+      font-weight: 700;
+      padding: 0 2px;
+      border-bottom: 2px solid var(--accent);
+    }
+    .actions {
+      display: flex; justify-content: flex-end;
+      margin-top: 32px;
+      position: relative; z-index: 1;
+    }
+    .btn-pill {
+      background: var(--ink); color: var(--bg);
+      border: none; cursor: pointer;
+      padding: 16px 36px;
+      border-radius: 999px;
+      font-family: var(--sans); font-size: 14px; font-weight: 500;
+      letter-spacing: 0.02em;
+      transition: transform 200ms ease, background 200ms ease;
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .btn-pill:hover:not(:disabled) {
+      background: var(--accent); transform: translateY(-1px);
+    }
+    .btn-pill:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-pill .arrow {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--bg); color: var(--ink);
+      display: grid; place-items: center;
+      font-size: 12px;
+    }
+
+    /* ── Transcript block (editorial style) ── */
+    .transcript-card {
+      background: var(--surface);
+      border-radius: 24px; padding: 40px 48px;
+      position: relative;
+    }
+    .transcript-card .quote-mark {
+      position: absolute; top: 20px; left: 32px;
+      font-family: var(--serif); font-size: 80px; line-height: 1;
+      color: var(--accent); opacity: 0.4;
+    }
+    .transcript-text {
+      font-family: var(--serif); font-weight: 400;
+      font-size: 22px; line-height: 1.5;
+      color: var(--ink); padding-left: 44px;
+      font-style: italic;
+    }
+
+    /* ── Metrics grid — magazine style ── */
+    .metrics {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+    }
+    .metric {
+      background: var(--surface);
+      border-radius: 20px; padding: 24px;
+      transition: transform 200ms ease;
+    }
+    .metric:hover { transform: translateY(-4px); }
+    .metric .label {
+      font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); font-weight: 500; margin-bottom: 12px;
+    }
+    .metric .value {
+      font-family: var(--serif); font-weight: 700;
+      font-size: 44px; line-height: 1; color: var(--ink);
+    }
+    .metric .unit {
+      font-size: 12px; color: var(--muted); margin-top: 6px;
+    }
+
+    /* ── Mistakes as editorial cards ── */
+    .mistakes-list { display: flex; flex-direction: column; gap: 16px; }
+    .mistake-card {
+      background: var(--surface);
+      border-radius: 20px; padding: 24px 28px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .mistake-card .rule-tag { align-self: flex-start; }
+    .rule-tag {
+      display: inline-block; font-size: 10px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 4px 12px; border-radius: 999px;
+      background: var(--bg); color: var(--ink);
+    }
+    .mistake-body .diff {
+      display: flex; align-items: center; gap: 14px;
+      font-family: var(--serif); font-size: 20px; font-weight: 500;
+      margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .mistake-body .diff .wrong {
+      text-decoration: line-through; text-decoration-color: var(--accent);
+      text-decoration-thickness: 2px; color: var(--muted);
+    }
+    .mistake-body .diff .arrow { color: var(--muted); font-size: 14px; }
+    .mistake-body .diff .fix { color: var(--ink); }
+    .mistake-body .msg {
+      font-size: 14px; color: var(--ink-soft); line-height: 1.6;
+    }
+
+    /* ── Filler pills ── */
+    .fillers { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .filler-pill {
+      padding: 6px 14px; border-radius: 999px;
+      background: var(--surface); color: var(--ink-soft);
+      font-size: 13px; font-family: var(--serif); font-style: italic;
+    }
+
+    /* ── Empty / success states ── */
+    .empty {
+      padding: 32px; text-align: center; background: var(--surface);
+      border-radius: 20px;
+      color: var(--muted); font-size: 14px;
+    }
+    .success {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--ink); color: var(--bg);
+      padding: 8px 18px; border-radius: 999px;
+      font-size: 12px; font-weight: 500; letter-spacing: 0.04em;
+      margin-bottom: 24px;
+    }
+    .success .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    }
+
+    /* ── Loader (from your CSS) ── */
+    .loader-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 20px;
+      padding: 80px 0;
+    }
+    .loader-wrap .loader-caption {
+      font-family: var(--serif); font-style: italic;
+      font-size: 18px; color: var(--ink-soft);
+    }
+    .loader {
+      width: 60px;
+      aspect-ratio: .5;
+      display: grid;
+    }
+    .loader:before {
+      content: "";
+      width: 30%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      margin: auto auto 0;
+      background: #CF4647;
+      animation: l9-0 .5s cubic-bezier(0,800,1,800) infinite;
+    }
+    .loader:after {
+      content: "";
+      width: 100%;
+      aspect-ratio: 1/cos(30deg);
+      margin: 0 auto auto;
+      clip-path: polygon(50% -50%,100% 50%,50% 150%,0 50%);
+      background: #524656;
+      animation: l9-1 .5s linear infinite;
+    }
+    @keyframes l9-0 {
+      0%,2%  {translate: 0   0%}
+      98%,to {translate: 0 -.2%}
+    }
+    @keyframes l9-1 {
+      0%,5%  {rotate:  0deg}
+      95%,to {rotate:-60deg}
+    }
+
+    /* ── History view ── */
+    .student-picker {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px;
+    }
+    .student-chip {
+      padding: 10px 20px; border-radius: 999px;
+      background: var(--surface); border: none; cursor: pointer;
+      font-family: var(--sans); font-size: 13px; font-weight: 500;
+      color: var(--ink-soft);
+      transition: all 200ms ease;
+    }
+    .student-chip:hover { color: var(--ink); }
+    .student-chip.active {
+      background: var(--ink); color: var(--bg);
+    }
+
+    .history-header {
+      margin-bottom: 32px;
+    }
+    .history-header .name {
+      font-family: var(--serif); font-weight: 700; font-size: 48px;
+      letter-spacing: -0.02em; margin: 0 0 8px;
+    }
+    .history-header .meta {
+      font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); font-weight: 500;
+    }
+
+    .session-table {
+      width: 100%; border-collapse: collapse;
+      background: var(--surface); border-radius: 20px; overflow: hidden;
+    }
+    .session-table th {
+      text-align: left; padding: 16px 20px;
+      font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--muted); font-weight: 500;
+      border-bottom: 1px solid var(--line);
+    }
+    .session-table td {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+    .session-table tr:last-child td { border-bottom: none; }
+    .session-table td:first-child { font-family: var(--serif); font-weight: 500; }
+
+    .bar-list {
+      background: var(--surface); border-radius: 20px; padding: 24px 28px;
+    }
+    .bar-row {
+      display: grid; grid-template-columns: 160px 1fr 40px;
+      align-items: center; gap: 16px; padding: 10px 0;
+      font-size: 13px;
+    }
+    .bar-row + .bar-row { border-top: 1px solid var(--line); }
+    .bar-track {
+      height: 6px; background: var(--bg); border-radius: 999px; position: relative;
+      overflow: hidden;
+    }
+    .bar-fill {
+      position: absolute; top: 0; left: 0; height: 100%;
+      background: var(--accent); border-radius: 999px;
+      animation: bar-grow 800ms cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: left;
+    }
+    @keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .bar-count {
+      font-family: var(--serif); font-weight: 700; font-size: 18px;
+      text-align: right; color: var(--ink);
+    }
+
+    /* ── Reveal ── */
+    [data-reveal] {
+      opacity: 0; transform: translateY(16px);
+      transition: opacity 500ms ease, transform 500ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    [data-reveal].on { opacity: 1; transform: translateY(0); }
+
+    ::selection { background: var(--accent); color: var(--bg); }
+
+    @media (max-width: 800px) {
+      .app-wrap { padding: 24px; }
+      .hero { grid-template-columns: 1fr; gap: 24px; }
+      .form-row { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .mistake-card { grid-template-columns: 1fr; }
+      .transcript-card { padding: 32px 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-wrap">
+    <nav class="top">
+      <div class="brand" data-reveal>Speaking Coach</div>
+      <div class="tabs">
+        <button class="tab active" data-tab="record" data-reveal>New Recording</button>
+        <button class="tab" data-tab="history" data-reveal>Student History</button>
+      </div>
+    </nav>
+
+    <!-- ─── RECORDING VIEW ─── -->
+    <section id="view-record">
+      <div class="hero dot-bg" style="background-position: right center; background-repeat: no-repeat; background-size: 200px 100%;">
+        <div>
+          <h1 data-reveal>
+            Speak.<br>
+            Listen. <em>Improve.</em>
+          </h1>
+          <p class="lede" data-reveal>
+            Upload a student's recording and get an editorial-quality review — a transcript, fluency metrics, and thoughtful grammar feedback.
+          </p>
+        </div>
+        <div class="hero-side" data-reveal>
+          <span class="stat-label">Ready</span>
+          <span class="stat-val">Session 01</span>
+        </div>
+      </div>
+
+      <div class="form-card" data-reveal>
+        <div class="form-row">
+          <div class="field">
+            <label for="studentName">Student Name</label>
+            <input class="input" id="studentName" placeholder="e.g. Ali Raza">
+          </div>
+          <div class="field">
+            <label for="studentGrade">Grade / Class</label>
+            <input class="input" id="studentGrade" placeholder="e.g. Grade 7">
+          </div>
+        </div>
+
+        <div class="source-toggle" id="sourceToggle">
+          <button class="active" data-source="upload">Upload File</button>
+          <button data-source="record">Record Voice</button>
+        </div>
+
+        <label class="uploader" id="uploader">
+          <div class="uploader-icon">↑</div>
+          <div class="title">Drop audio or click to browse</div>
+          <div class="sub">WAV · MP3 · M4A · OGG · FLAC</div>
+          <div class="selected-file" id="selectedFile"></div>
+          <input type="file" id="audioInput" accept="audio/*">
+        </label>
+
+        <div class="recorder" id="recorder" style="display:none">
+          <canvas class="waveform" id="waveform"></canvas>
+          <button class="rec-btn" id="recBtn">●</button>
+          <div class="rec-status" id="recStatus">Tap to start recording</div>
+          <div class="rec-timer" id="recTimer">00:00</div>
+        </div>
+
+        <div class="audio-preview-wrap" id="audioPreviewWrap" style="display:none">
+          <div class="icon-dot">♪</div>
+          <audio id="audioPreview" controls></audio>
+        </div>
+
+        <div class="actions">
+          <button class="btn-pill" id="analyzeBtn" disabled>
+            Analyze Recording
+            <span class="arrow">→</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="results"></div>
+    </section>
+
+    <!-- ─── HISTORY VIEW ─── -->
+    <section id="view-history" style="display:none">
+      <div class="section-head">
+        <span class="num">01</span>
+        <h2>Students</h2>
+      </div>
+      <div class="student-picker" id="studentPicker"></div>
+      <div id="studentDetail"></div>
+    </section>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
