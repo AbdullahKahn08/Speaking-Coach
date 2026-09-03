@@ -1,16 +1,3 @@
-"""
-English Speaking Coach - FastAPI Backend
------------------------------------------
-Serves the Modernist HTML frontend and exposes JSON APIs for analysis.
-
-Run:
-    pip install fastapi uvicorn python-multipart openai-whisper language-tool-python google-genai sqlalchemy
-    set GEMINI_API_KEY=AIza...
-    uvicorn main:app --reload
-
-Then open: http://localhost:8000
-"""
-
 import os
 import re
 import json
@@ -30,9 +17,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
-# ---------------------------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
 AUDIO_DIR = BASE_DIR / "audio_uploads"
@@ -43,9 +27,6 @@ DB_PATH = "sqlite:///speaking_coach.db"
 FILLER_WORDS = {"uh", "um", "hmm", "like", "you know", "err", "ah", "eh"}
 PAUSE_SHORT, PAUSE_MEDIUM, PAUSE_LONG = 0.25, 0.75, 1.5
 
-# ---------------------------------------------------------------------------
-# DATABASE
-# ---------------------------------------------------------------------------
 Base = declarative_base()
 
 class Student(Base):
@@ -88,9 +69,6 @@ engine = create_engine(DB_PATH, connect_args={"check_same_thread": False})
 Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
 
-# ---------------------------------------------------------------------------
-# MODELS (module-level, loaded once at startup)
-# ---------------------------------------------------------------------------
 print("Loading Whisper...")
 _whisper = whisper.load_model("small")
 print("Loading LanguageTool...")
@@ -128,9 +106,6 @@ Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
 If truly no issues, return {{"corrected": "<original transcript unchanged>", "mistakes": []}}."""
 
 
-# ---------------------------------------------------------------------------
-# ANALYSIS
-# ---------------------------------------------------------------------------
 def analyze_audio(audio_path: str) -> dict:
     result = _whisper.transcribe(audio_path, word_timestamps=True, language="en")
     transcript = result["text"].strip()
@@ -141,7 +116,6 @@ def analyze_audio(audio_path: str) -> dict:
             words.append({"word": w["word"].strip(),
                           "start": w["start"], "end": w["end"]})
 
-    # Pauses
     pauses = []
     for i in range(1, len(words)):
         gap = words[i]["start"] - words[i-1]["end"]
@@ -160,7 +134,6 @@ def analyze_audio(audio_path: str) -> dict:
     for f in FILLER_WORDS:
         fillers.extend([f] * len(re.findall(rf"\b{re.escape(f)}\b", lower)))
 
-    # Grammar (LanguageTool)
     grammar = []
     for m in _lt.check(transcript):
         if m.rule_id.startswith("MORFOLOGIK"):
@@ -172,7 +145,6 @@ def analyze_audio(audio_path: str) -> dict:
             "message": m.message,
         })
 
-    # Semantic review (Gemini)
     corrected = transcript
     if transcript and os.environ.get("GEMINI_API_KEY"):
         try:
@@ -246,9 +218,6 @@ def save_session(student_name: str, grade: str, audio_path: str, analysis: dict)
         db.close()
 
 
-# ---------------------------------------------------------------------------
-# API
-# ---------------------------------------------------------------------------
 app = FastAPI(title="English Speaking Coach")
 
 
@@ -319,9 +288,6 @@ def student_detail(name: str):
         db.close()
 
 
-# ---------------------------------------------------------------------------
-# STATIC FRONTEND
-# ---------------------------------------------------------------------------
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
