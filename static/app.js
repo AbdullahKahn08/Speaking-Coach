@@ -1,5 +1,24 @@
 // English Speaking Coach — frontend
 
+const STORAGE_KEY = 'speakingCoachStudent';
+
+// ─── Identity gate ───
+// This page assumes index.html already collected name/roll/grade/section.
+// If that's missing, bounce back to the intake form instead of guessing.
+let student = null;
+try { student = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { student = null; }
+if (!student || !student.name || !student.roll) {
+  window.location.href = 'index.html';
+}
+
+document.getElementById('idName').textContent = student.name;
+document.getElementById('idRoll').textContent = `Roll ${student.roll}`;
+document.getElementById('idGradeSection').textContent =
+  [student.grade, student.section].filter(Boolean).join(' · ') || '—';
+document.getElementById('switchStudent').addEventListener('click', () => {
+  window.location.href = 'index.html';
+});
+
 requestAnimationFrame(() => {
   document.querySelectorAll('[data-reveal]').forEach((el, i) => {
     setTimeout(() => el.classList.add('on'), 60 * i);
@@ -47,7 +66,7 @@ uploader.addEventListener('drop', e => {
   if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
 });
 
-// ─── Source toggle (upload vs record) ───
+// ─── Source toggle (record vs upload) — recording is the default focus ───
 const sourceToggle = document.getElementById('sourceToggle');
 const recorderPanel = document.getElementById('recorder');
 sourceToggle.querySelectorAll('button').forEach(btn => {
@@ -99,7 +118,7 @@ function drawIdleWaveform() {
   waveCtx.clearRect(0, 0, w, h);
   const barCount = 60, gap = 3;
   const barW = (w - gap * (barCount - 1)) / barCount;
-  waveCtx.fillStyle = '#d8d3cc';
+  waveCtx.fillStyle = 'rgba(255,255,255,0.25)';
   for (let i = 0; i < barCount; i++) {
     const barH = 2;
     waveCtx.fillRect(i * (barW + gap), (h - barH) / 2, barW, barH);
@@ -121,8 +140,7 @@ function drawLiveWaveform() {
   for (let i = 0; i < barCount; i++) {
     const v = data[i * step] || 0;
     const barH = Math.max(2, (v / 255) * h * 0.95);
-    // gradient from center outwards for a nice mirrored feel
-    waveCtx.fillStyle = '#CF4647';
+    waveCtx.fillStyle = '#14a868';
     waveCtx.fillRect(i * (barW + gap), (h - barH) / 2, barW, barH);
   }
   waveRAF = requestAnimationFrame(drawLiveWaveform);
@@ -194,7 +212,8 @@ recBtn.addEventListener('click', () => {
   }
 });
 
-// Draw idle bars whenever the recorder panel becomes visible
+// Draw idle bars whenever the recorder panel becomes visible, and once up front
+// since the recorder is now the default view.
 new MutationObserver(() => {
   if (recorderPanel.style.display !== 'none') {
     sizeCanvas();
@@ -204,12 +223,10 @@ new MutationObserver(() => {
 window.addEventListener('resize', () => {
   if (recorderPanel.style.display !== 'none') { sizeCanvas(); drawIdleWaveform(); }
 });
+requestAnimationFrame(() => { sizeCanvas(); drawIdleWaveform(); });
 
 // ─── Analyze ───
 analyzeBtn.addEventListener('click', async () => {
-  const name  = document.getElementById('studentName').value.trim();
-  const grade = document.getElementById('studentGrade').value.trim();
-  if (!name)        { alert('Please enter a student name.'); return; }
   if (!currentFile) return;
 
   const results = document.getElementById('results');
@@ -221,8 +238,10 @@ analyzeBtn.addEventListener('click', async () => {
   analyzeBtn.disabled = true;
 
   const form = new FormData();
-  form.append('student_name', name);
-  form.append('grade', grade);
+  form.append('student_name', student.name);
+  form.append('roll_number', student.roll);
+  form.append('grade', student.grade || '');
+  form.append('section', student.section || '');
   form.append('audio', currentFile);
 
   try {
@@ -257,12 +276,27 @@ function renderResults(d) {
 
   const fillerBlock = d.fillers.length ? `
     <div class="section-head" data-reveal>
-      <span class="num">04</span>
+      <span class="num">05</span>
       <h2>Filler Words</h2>
     </div>
     <div class="fillers">
       ${d.fillers.map(f => `<span class="filler-pill">${escape(f)}</span>`).join('')}
     </div>` : '';
+
+  const pacingNotes = d.pacing_notes || [];
+  const pacingBlock = pacingNotes.length
+    ? pacingNotes.map(n => `
+        <div class="pacing-item ${escape(n.type)}" data-reveal>
+          <div class="pacing-time">${escape(n.time)}</div>
+          <div class="pacing-body">
+            <span class="pacing-tag">${pacingLabel(n.type)}</span>
+            <div class="pacing-msg">${escape(n.message)}</div>
+            ${n.type === 'long_pause'
+              ? `<div class="pacing-context">${escape(n.before)} <strong>‹pause›</strong> ${escape(n.after)}</div>`
+              : `<div class="pacing-context">"${escape(n.text)}"</div>`}
+          </div>
+        </div>`).join('')
+    : `<div class="empty">Pacing was steady throughout — no long pauses or rushed/slow stretches detected.</div>`;
 
   results.innerHTML = `
     <div style="margin-top: 48px;">
@@ -303,6 +337,12 @@ function renderResults(d) {
 
     <div class="section-head" data-reveal>
       <span class="num">03</span>
+      <h2>Pacing &amp; Pauses</h2>
+    </div>
+    <div class="pacing-list">${pacingBlock}</div>
+
+    <div class="section-head" data-reveal>
+      <span class="num">04</span>
       <h2>Grammar &amp; Structure</h2>
     </div>
     <div class="mistakes-list">${mistakes}</div>
@@ -315,6 +355,13 @@ function renderResults(d) {
       setTimeout(() => el.classList.add('on'), 70 * i);
     });
   });
+}
+
+function pacingLabel(type) {
+  if (type === 'long_pause') return 'Long pause';
+  if (type === 'slow') return 'Spoke slowly';
+  if (type === 'fast') return 'Rushed';
+  return type;
 }
 
 function metric(label, value, unit) {
@@ -341,13 +388,13 @@ async function loadStudents() {
       return;
     }
     picker.innerHTML = students.map(s =>
-      `<button class="student-chip" data-name="${escape(s.name)}">${escape(s.name)} · ${s.session_count}</button>`
+      `<button class="student-chip" data-roll="${escape(s.roll_number)}">${escape(s.name)} · ${s.session_count}</button>`
     ).join('');
     picker.querySelectorAll('.student-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         picker.querySelectorAll('.student-chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
-        loadStudentDetail(chip.dataset.name);
+        loadStudentDetail(chip.dataset.roll);
       });
     });
     picker.querySelector('.student-chip').click();
@@ -356,11 +403,11 @@ async function loadStudents() {
   }
 }
 
-async function loadStudentDetail(name) {
+async function loadStudentDetail(rollNumber) {
   const detail = document.getElementById('studentDetail');
   detail.innerHTML = `<div class="loader-wrap"><div class="loader"></div></div>`;
   try {
-    const d = await (await fetch(`/api/students/${encodeURIComponent(name)}`)).json();
+    const d = await (await fetch(`/api/students/${encodeURIComponent(rollNumber)}`)).json();
 
     const sessionRows = d.sessions.map(s => `
       <tr>
@@ -385,7 +432,7 @@ async function loadStudentDetail(name) {
     detail.innerHTML = `
       <div class="history-header">
         <h1 class="name">${escape(d.name)}</h1>
-        <div class="meta">${escape(d.grade || 'No grade')} · ${d.sessions.length} session(s)</div>
+        <div class="meta">Roll ${escape(d.roll_number)} · ${escape(d.grade || 'No grade')} · ${escape(d.section || 'No section')} · ${d.sessions.length} session(s)</div>
       </div>
 
       <div class="section-head">

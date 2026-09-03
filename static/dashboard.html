@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Speaking Coach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #eef1e9;          /* pale sage paper */
+      --surface: #ffffff;
+      --ink: #0d2b21;         /* deep phthalo green-black */
+      --ink-soft: #3c5148;
+      --muted: #7e9088;
+      --line: #dee4da;
+      --accent: #0e6e44;      /* phthalo green */
+      --accent-bright: #14a868;
+      --accent-dim: #0a4f32;
+      --dot: #cdd8cd;
+      --serif: 'Fraunces', Georgia, serif;
+      --sans: 'Public Sans', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); }
+    body {
+      font-family: var(--sans);
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .dot-bg {
+      background-image: radial-gradient(var(--dot) 1.5px, transparent 1.5px);
+      background-size: 18px 18px;
+    }
+
+    /* ── Layout ── */
+    .app-wrap { max-width: 1100px; margin: 0 auto; padding: 28px 40px 80px; }
+
+    /* ── Top nav ── */
+    nav.top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 0 24px;
+    }
+    .brand {
+      font-family: var(--serif); font-weight: 700;
+      font-size: 20px; letter-spacing: -0.01em;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .brand .mark {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--ink); color: var(--bg);
+      display: grid; place-items: center; font-size: 13px;
+    }
+    .tabs { display: flex; gap: 28px; align-items: center; }
+    .tab {
+      background: transparent; border: none; cursor: pointer;
+      font-family: var(--sans); font-size: 14px; font-weight: 600;
+      color: var(--muted); padding: 6px 0;
+      border-bottom: 2px solid transparent;
+      transition: color 200ms ease, border-color 200ms ease;
+    }
+    .tab:hover { color: var(--ink); }
+    .tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+
+    /* ── Identity strip ── */
+    .identity-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      background: var(--ink); color: var(--bg);
+      border-radius: 999px; padding: 10px 10px 10px 20px;
+      margin-bottom: 28px;
+    }
+    .identity-bar .who {
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      font-size: 13px; color: color-mix(in srgb, var(--bg) 75%, transparent);
+    }
+    .identity-bar .who strong {
+      font-family: var(--serif); font-weight: 600; font-size: 16px; color: var(--bg);
+    }
+    .identity-bar .chip {
+      background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 999px;
+      font-size: 12px; letter-spacing: 0.02em;
+    }
+    .switch-student {
+      flex: none; background: var(--accent); color: #f2fbf6;
+      border: none; cursor: pointer; font-family: var(--sans); font-weight: 600;
+      font-size: 12.5px; padding: 9px 16px; border-radius: 999px;
+      transition: background 150ms ease;
+    }
+    .switch-student:hover { background: var(--accent-bright); }
+
+    /* ── Section header ── */
+    .section-head {
+      margin: 48px 0 20px;
+      display: flex; align-items: baseline; gap: 16px;
+    }
+    .section-head h2 {
+      font-family: var(--serif); font-weight: 700;
+      font-size: 30px; letter-spacing: -0.01em; margin: 0;
+    }
+    .section-head .num {
+      font-family: var(--sans); font-size: 12px;
+      color: var(--muted); font-weight: 600; letter-spacing: 0.1em;
+    }
+
+    /* ── Recorder hero: the main focus of the page ── */
+    .booth {
+      background: linear-gradient(165deg, var(--ink) 0%, var(--accent-dim) 130%);
+      border-radius: 32px;
+      padding: 56px 40px 44px;
+      position: relative;
+      overflow: hidden;
+      color: var(--bg);
+    }
+    .booth::before {
+      content: ''; position: absolute; top: -60px; right: -60px;
+      width: 260px; height: 260px; border-radius: 50%;
+      background: var(--accent-bright); opacity: 0.16;
+    }
+    .booth::after {
+      content: ''; position: absolute; bottom: -80px; left: -40px;
+      width: 220px; height: 220px; border-radius: 50%;
+      background: var(--accent-bright); opacity: 0.1;
+    }
+    .booth-head {
+      position: relative; z-index: 1;
+      text-align: center; margin-bottom: 8px;
+    }
+    .booth-head h1 {
+      font-family: var(--serif); font-weight: 700;
+      font-size: clamp(30px, 4vw, 42px);
+      line-height: 1.08; letter-spacing: -0.01em;
+      margin: 0 0 8px;
+    }
+    .booth-head p {
+      font-size: 14px; color: color-mix(in srgb, var(--bg) 70%, transparent);
+      max-width: 440px; margin: 0 auto;
+    }
+
+    .source-toggle {
+      position: relative; z-index: 1;
+      display: inline-flex; padding: 4px;
+      background: rgba(255,255,255,0.08); border-radius: 999px;
+      margin: 28px auto 0; display: flex; justify-content: center; width: fit-content;
+    }
+    .source-toggle button {
+      background: transparent; border: none; cursor: pointer;
+      padding: 8px 20px; border-radius: 999px;
+      font-family: var(--sans); font-size: 13px; font-weight: 600;
+      color: color-mix(in srgb, var(--bg) 70%, transparent);
+      transition: all 200ms ease;
+    }
+    .source-toggle button.active {
+      background: var(--accent-bright); color: var(--ink);
+    }
+
+    /* ── Recorder ── */
+    .recorder {
+      position: relative; z-index: 1;
+      padding: 36px 24px 8px; text-align: center;
+    }
+    .waveform {
+      width: 100%; max-width: 520px; height: 100px;
+      margin: 8px auto 28px;
+      display: block;
+    }
+    .rec-btn {
+      width: 92px; height: 92px; border-radius: 50%;
+      border: none; cursor: pointer; margin: 0 auto 18px;
+      background: var(--accent-bright); color: var(--ink);
+      display: grid; place-items: center;
+      font-size: 32px;
+      transition: transform 200ms ease, box-shadow 200ms ease;
+      box-shadow: 0 0 0 0 rgba(20, 168, 104, 0.4);
+    }
+    .rec-btn:hover:not(.recording) { transform: scale(1.05); }
+    .rec-btn.recording {
+      background: #e0574a;
+      animation: pulse 1.4s ease-out infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(224, 87, 74, 0.5); }
+      70% { box-shadow: 0 0 0 26px rgba(224, 87, 74, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(224, 87, 74, 0); }
+    }
+    .rec-status {
+      font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 17px;
+      color: var(--bg); margin-bottom: 4px;
+    }
+    .rec-timer {
+      font-family: var(--sans); font-size: 13px; letter-spacing: 0.08em;
+      color: color-mix(in srgb, var(--bg) 65%, transparent);
+    }
+
+    /* ── Upload panel (secondary, tucked inside the toggle) ── */
+    .uploader {
+      display: block; width: 100%; max-width: 520px; margin: 0 auto; box-sizing: border-box;
+      background: rgba(255,255,255,0.06);
+      border: 1.5px dashed rgba(255,255,255,0.25);
+      border-radius: 20px;
+      padding: 36px 24px; text-align: center;
+      cursor: pointer;
+      transition: border-color 200ms ease, background 200ms ease;
+      position: relative; z-index: 1;
+    }
+    .uploader:hover, .uploader.dragging {
+      border-color: var(--accent-bright); background: rgba(255,255,255,0.1);
+    }
+    .uploader-icon {
+      width: 40px; height: 40px; margin: 0 auto 12px;
+      background: var(--accent-bright); border-radius: 50%;
+      display: grid; place-items: center; color: var(--ink);
+      font-size: 18px;
+    }
+    .uploader .title {
+      font-family: var(--serif); font-weight: 600; font-size: 19px;
+      letter-spacing: -0.01em; color: var(--bg);
+    }
+    .uploader .sub {
+      font-size: 12px; color: color-mix(in srgb, var(--bg) 65%, transparent);
+      margin-top: 6px; letter-spacing: 0.06em;
+    }
+    .uploader input { display: none; }
+    .selected-file {
+      margin-top: 14px; font-size: 13px; font-weight: 600;
+      color: var(--accent-bright);
+    }
+
+    .audio-preview-wrap {
+      position: relative; z-index: 1;
+      background: rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 16px 20px;
+      margin: 20px auto 0; max-width: 520px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .audio-preview-wrap .icon-dot {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--accent-bright); color: var(--ink);
+      display: grid; place-items: center; flex: none;
+      font-size: 14px;
+    }
+    .audio-preview-wrap audio { flex: 1; height: 36px; }
+
+    .actions {
+      position: relative; z-index: 1;
+      display: flex; justify-content: center;
+      margin-top: 30px;
+    }
+    .btn-pill {
+      background: var(--accent-bright); color: var(--ink);
+      border: none; cursor: pointer;
+      padding: 16px 40px;
+      border-radius: 999px;
+      font-family: var(--sans); font-size: 14.5px; font-weight: 700;
+      letter-spacing: 0.01em;
+      transition: transform 200ms ease, background 200ms ease;
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .btn-pill:hover:not(:disabled) { background: #23c67f; transform: translateY(-1px); }
+    .btn-pill:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-pill .arrow {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(13,43,33,0.18); color: var(--ink);
+      display: grid; place-items: center; font-size: 12px;
+    }
+
+    /* ── Corrected transcript with highlights ── */
+    .corrected-card {
+      background: var(--surface);
+      border-radius: 24px; padding: 32px 40px;
+      margin-top: 16px;
+      border-left: 4px solid var(--accent);
+    }
+    .corrected-card .label {
+      font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--muted); font-weight: 600; margin-bottom: 12px;
+    }
+    .corrected-text {
+      font-family: var(--serif); font-size: 22px; line-height: 1.55;
+      color: var(--ink);
+    }
+    .corrected-text mark {
+      background: transparent;
+      color: var(--accent);
+      font-weight: 700;
+      padding: 0 2px;
+      border-bottom: 2px solid var(--accent);
+    }
+
+    /* ── Transcript block (editorial style) ── */
+    .transcript-card {
+      background: var(--surface);
+      border-radius: 24px; padding: 40px 48px;
+      position: relative;
+    }
+    .transcript-card .quote-mark {
+      position: absolute; top: 20px; left: 32px;
+      font-family: var(--serif); font-size: 80px; line-height: 1;
+      color: var(--accent); opacity: 0.35;
+    }
+    .transcript-text {
+      font-family: var(--serif); font-weight: 400;
+      font-size: 22px; line-height: 1.5;
+      color: var(--ink); padding-left: 44px;
+      font-style: italic;
+    }
+
+    /* ── Metrics grid ── */
+    .metrics {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px;
+    }
+    .metric {
+      background: var(--surface);
+      border-radius: 20px; padding: 22px;
+      transition: transform 200ms ease;
+    }
+    .metric:hover { transform: translateY(-4px); }
+    .metric .label {
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 600; margin-bottom: 12px;
+    }
+    .metric .value {
+      font-family: var(--serif); font-weight: 700;
+      font-size: 40px; line-height: 1; color: var(--ink);
+    }
+    .metric .unit { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+    /* ── Pacing timeline ── */
+    .pacing-list { display: flex; flex-direction: column; gap: 10px; }
+    .pacing-item {
+      display: flex; align-items: flex-start; gap: 16px;
+      background: var(--surface); border-radius: 16px; padding: 16px 20px;
+      border-left: 4px solid var(--line);
+    }
+    .pacing-item.long_pause { border-left-color: #c9862f; }
+    .pacing-item.slow { border-left-color: var(--accent); }
+    .pacing-item.fast { border-left-color: #8a5fc9; }
+    .pacing-time {
+      flex: none; font-family: var(--serif); font-weight: 700; font-size: 15px;
+      color: var(--ink); background: var(--bg); border-radius: 10px;
+      padding: 5px 10px; min-width: 44px; text-align: center;
+    }
+    .pacing-body { flex: 1; }
+    .pacing-msg { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 3px; }
+    .pacing-tag {
+      display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; padding: 2px 9px; border-radius: 999px;
+      margin-bottom: 6px;
+    }
+    .pacing-item.long_pause .pacing-tag { background: #fbeedb; color: #8a5a1c; }
+    .pacing-item.slow .pacing-tag { background: #e2f2e9; color: var(--accent-dim); }
+    .pacing-item.fast .pacing-tag { background: #ece4fa; color: #5b3d9c; }
+    .pacing-context { font-size: 13px; color: var(--ink-soft); font-style: italic; }
+
+    /* ── Mistakes as editorial cards ── */
+    .mistakes-list { display: flex; flex-direction: column; gap: 16px; }
+    .mistake-card {
+      background: var(--surface);
+      border-radius: 20px; padding: 24px 28px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .mistake-card .rule-tag { align-self: flex-start; }
+    .rule-tag {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 4px 12px; border-radius: 999px;
+      background: var(--bg); color: var(--ink);
+    }
+    .mistake-body .diff {
+      display: flex; align-items: center; gap: 14px;
+      font-family: var(--serif); font-size: 20px; font-weight: 500;
+      margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .mistake-body .diff .wrong {
+      text-decoration: line-through; text-decoration-color: var(--accent);
+      text-decoration-thickness: 2px; color: var(--muted);
+    }
+    .mistake-body .diff .arrow { color: var(--muted); font-size: 14px; }
+    .mistake-body .diff .fix { color: var(--ink); }
+    .mistake-body .msg { font-size: 14px; color: var(--ink-soft); line-height: 1.6; }
+
+    /* ── Filler pills ── */
+    .fillers { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .filler-pill {
+      padding: 6px 14px; border-radius: 999px;
+      background: var(--surface); color: var(--ink-soft);
+      font-size: 13px; font-family: var(--serif); font-style: italic;
+    }
+
+    /* ── Empty / success states ── */
+    .empty {
+      padding: 32px; text-align: center; background: var(--surface);
+      border-radius: 20px; color: var(--muted); font-size: 14px;
+    }
+    .success {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--ink); color: var(--bg);
+      padding: 8px 18px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.03em;
+      margin-bottom: 24px;
+    }
+    .success .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-bright); }
+
+    /* ── Loader ── */
+    .loader-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 20px;
+      padding: 80px 0;
+    }
+    .loader-wrap .loader-caption {
+      font-family: var(--serif); font-style: italic;
+      font-size: 18px; color: var(--ink-soft);
+    }
+    .loader { width: 60px; aspect-ratio: .5; display: grid; }
+    .loader:before {
+      content: ""; width: 30%; aspect-ratio: 1; border-radius: 50%;
+      margin: auto auto 0; background: var(--accent);
+      animation: l9-0 .5s cubic-bezier(0,800,1,800) infinite;
+    }
+    .loader:after {
+      content: ""; width: 100%; aspect-ratio: 1/cos(30deg);
+      margin: 0 auto auto;
+      clip-path: polygon(50% -50%,100% 50%,50% 150%,0 50%);
+      background: var(--ink);
+      animation: l9-1 .5s linear infinite;
+    }
+    @keyframes l9-0 { 0%,2% {translate: 0 0%} 98%,to {translate: 0 -.2%} }
+    @keyframes l9-1 { 0%,5% {rotate: 0deg} 95%,to {rotate:-60deg} }
+
+    /* ── History view ── */
+    .student-picker { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px; }
+    .student-chip {
+      padding: 10px 20px; border-radius: 999px;
+      background: var(--surface); border: none; cursor: pointer;
+      font-family: var(--sans); font-size: 13px; font-weight: 600;
+      color: var(--ink-soft);
+      transition: all 200ms ease;
+    }
+    .student-chip:hover { color: var(--ink); }
+    .student-chip.active { background: var(--ink); color: var(--bg); }
+
+    .history-header { margin-bottom: 32px; }
+    .history-header .name {
+      font-family: var(--serif); font-weight: 700; font-size: 42px;
+      letter-spacing: -0.02em; margin: 0 0 8px;
+    }
+    .history-header .meta {
+      font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 600;
+    }
+
+    .session-table {
+      width: 100%; border-collapse: collapse;
+      background: var(--surface); border-radius: 20px; overflow: hidden;
+    }
+    .session-table th {
+      text-align: left; padding: 16px 20px;
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); font-weight: 600;
+      border-bottom: 1px solid var(--line);
+    }
+    .session-table td { padding: 16px 20px; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .session-table tr:last-child td { border-bottom: none; }
+    .session-table td:first-child { font-family: var(--serif); font-weight: 600; }
+
+    .bar-list { background: var(--surface); border-radius: 20px; padding: 24px 28px; }
+    .bar-row {
+      display: grid; grid-template-columns: 160px 1fr 40px;
+      align-items: center; gap: 16px; padding: 10px 0; font-size: 13px;
+    }
+    .bar-row + .bar-row { border-top: 1px solid var(--line); }
+    .bar-track {
+      height: 6px; background: var(--bg); border-radius: 999px; position: relative; overflow: hidden;
+    }
+    .bar-fill {
+      position: absolute; top: 0; left: 0; height: 100%;
+      background: var(--accent); border-radius: 999px;
+      animation: bar-grow 800ms cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: left;
+    }
+    @keyframes bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    .bar-count { font-family: var(--serif); font-weight: 700; font-size: 18px; text-align: right; color: var(--ink); }
+
+    /* ── Reveal ── */
+    [data-reveal] { opacity: 0; transform: translateY(16px); transition: opacity 500ms ease, transform 500ms cubic-bezier(0.16, 1, 0.3, 1); }
+    [data-reveal].on { opacity: 1; transform: translateY(0); }
+
+    ::selection { background: var(--accent-bright); color: var(--ink); }
+
+    @media (max-width: 800px) {
+      .app-wrap { padding: 20px; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .mistake-card { grid-template-columns: 1fr; }
+      .transcript-card { padding: 32px 24px; }
+      .identity-bar { flex-wrap: wrap; border-radius: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-wrap">
+    <nav class="top">
+      <div class="brand" data-reveal>
+        <span class="mark">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" fill="currentColor"/>
+            <path d="M6 11a1 1 0 1 0-2 0 8 8 0 0 0 7 7.94V21H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-2.06A8 8 0 0 0 20 11a1 1 0 1 0-2 0 6 6 0 0 1-12 0Z" fill="currentColor"/>
+          </svg>
+        </span>
+        Speaking Coach
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="record" data-reveal>Record</button>
+        <button class="tab" data-tab="history" data-reveal>History</button>
+      </div>
+    </nav>
+
+    <div class="identity-bar" data-reveal>
+      <div class="who">
+        <strong id="idName">—</strong>
+        <span class="chip" id="idRoll">Roll —</span>
+        <span class="chip" id="idGradeSection">—</span>
+      </div>
+      <button class="switch-student" id="switchStudent">Not you? Switch</button>
+    </div>
+
+    <!-- ─── RECORDING VIEW ─── -->
+    <section id="view-record">
+      <div class="booth dot-bg" data-reveal>
+        <div class="booth-head">
+          <h1>Speak. Listen. Improve.</h1>
+          <p>Record a short passage and get an instant transcript, pacing map, and grammar review.</p>
+        </div>
+
+        <div class="source-toggle" id="sourceToggle">
+          <button class="active" data-source="record">Record Voice</button>
+          <button data-source="upload">Upload File</button>
+        </div>
+
+        <div class="recorder" id="recorder">
+          <canvas class="waveform" id="waveform"></canvas>
+          <button class="rec-btn" id="recBtn">●</button>
+          <div class="rec-status" id="recStatus">Tap to start recording</div>
+          <div class="rec-timer" id="recTimer">00:00</div>
+        </div>
+
+        <label class="uploader" id="uploader" style="display:none">
+          <div class="uploader-icon">↑</div>
+          <div class="title">Drop audio or click to browse</div>
+          <div class="sub">WAV · MP3 · M4A · OGG · FLAC</div>
+          <div class="selected-file" id="selectedFile"></div>
+          <input type="file" id="audioInput" accept="audio/*">
+        </label>
+
+        <div class="audio-preview-wrap" id="audioPreviewWrap" style="display:none">
+          <div class="icon-dot">♪</div>
+          <audio id="audioPreview" controls></audio>
+        </div>
+
+        <div class="actions">
+          <button class="btn-pill" id="analyzeBtn" disabled>
+            Analyze Recording
+            <span class="arrow">→</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="results"></div>
+    </section>
+
+    <!-- ─── HISTORY VIEW ─── -->
+    <section id="view-history" style="display:none">
+      <div class="section-head">
+        <span class="num">01</span>
+        <h2>Students</h2>
+      </div>
+      <div class="student-picker" id="studentPicker"></div>
+      <div id="studentDetail"></div>
+    </section>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

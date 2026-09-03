@@ -2,6 +2,7 @@ myenv
 __pycache__
 audio_uploads
 speaking_coach.db
+speaking_coach_old_schema_backup.db
 
 
 
