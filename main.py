@@ -2,7 +2,9 @@ import os
 import re
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -62,6 +64,8 @@ class Session(Base):
     medium_pauses = Column(Integer)
     long_pauses = Column(Integer)
     avg_pause_ms = Column(Float)
+    score = Column(Integer)
+    score_reason = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     student = relationship("Student", back_populates="sessions")
     mistakes = relationship("Mistake", back_populates="session")
@@ -77,28 +81,56 @@ class Mistake(Base):
     explanation = Column(Text)
     session = relationship("Session", back_populates="mistakes")
 
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
+# SQLite's default journal mode only allows ONE writer at a time for the
+# entire database file — if two students hit "Analyze" within the same
+# instant, the second one gets a "database is locked" error. WAL (Write-
+# Ahead Logging) mode lets reads and writes happen concurrently instead,
+# covering the "a few people submit around the same time" case that matters
+# for a classroom demo. It does NOT make SQLite handle true high-concurrency
+# load (see deployment notes for when to move to Postgres) — it just removes
+# the most common lock error at small scale. Applies to every connection
+# SQLAlchemy opens, on both engines created below.
+@event.listens_for(Engine, "connect")
+def _enable_sqlite_wal(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=5000")  # wait up to 5s instead of failing instantly
+    cursor.close()
+
 engine = create_engine(DB_PATH, connect_args={"check_same_thread": False})
 
 # The database file predates the roll_number/section columns added to the
-# Student model. create_all() only creates *missing* tables, it never alters
-# existing ones, so an old file left every request failing with "no such
-# column". Detect that mismatch here and move the old file aside instead of
-# crashing — a fresh DB is created automatically, and nothing is lost since
-# the old file is kept as a backup.
+# Student model (and now the score/score_reason columns on Session).
+# create_all() only creates *missing* tables, it never alters existing ones,
+# so an old file left every request failing with "no such column". Detect
+# that mismatch here and move the old file aside instead of crashing — a
+# fresh DB is created automatically, and nothing is lost since the old file
+# is kept as a backup.
 inspector = inspect(engine)
-if "students" in inspector.get_table_names():
-    existing_cols = {c["name"] for c in inspector.get_columns("students")}
-    required_cols = {c.name for c in Student.__table__.columns}
-    if not required_cols.issubset(existing_cols):
-        engine.dispose()
-        backup_path = DB_FILE.with_name(DB_FILE.stem + "_old_schema_backup.db")
-        if backup_path.exists():
-            backup_path.unlink()
-        DB_FILE.rename(backup_path)
-        print(f"[startup] Database schema was out of date (missing "
-              f"{required_cols - existing_cols}). Old data backed up to "
-              f"'{backup_path.name}'; starting a fresh database.")
-        engine = create_engine(DB_PATH, connect_args={"check_same_thread": False})
+_schema_stale = False
+_missing_cols = set()
+for _model in (Student, Session):
+    table_name = _model.__tablename__
+    if table_name in inspector.get_table_names():
+        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        required_cols = {c.name for c in _model.__table__.columns}
+        if not required_cols.issubset(existing_cols):
+            _schema_stale = True
+            _missing_cols |= (required_cols - existing_cols)
+
+if _schema_stale:
+    engine.dispose()
+    backup_path = DB_FILE.with_name(DB_FILE.stem + "_old_schema_backup.db")
+    if backup_path.exists():
+        backup_path.unlink()
+    DB_FILE.rename(backup_path)
+    print(f"[startup] Database schema was out of date (missing "
+          f"{_missing_cols}). Old data backed up to "
+          f"'{backup_path.name}'; starting a fresh database.")
+    engine = create_engine(DB_PATH, connect_args={"check_same_thread": False})
 
 Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
@@ -108,8 +140,43 @@ SessionLocal = sessionmaker(bind=engine)
 # detection). See the "why is this slow" notes near analyze_audio().
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 
-print(f"Loading Whisper ({WHISPER_MODEL})...")
-_whisper = whisper.load_model(WHISPER_MODEL)
+# GPU acceleration: Whisper runs dramatically faster on an NVIDIA GPU via
+# CUDA (often 5-10x). Auto-detects if a CUDA-capable GPU + the right PyTorch
+# build are available; falls back to CPU otherwise. Force a specific device
+# with WHISPER_DEVICE=cuda or WHISPER_DEVICE=cpu if the auto-detect guesses
+# wrong (e.g. multiple GPUs, or you want to reserve the GPU for something else).
+import torch
+
+_forced_device = os.environ.get("WHISPER_DEVICE", "").strip().lower()
+if _forced_device in ("cuda", "cpu"):
+    WHISPER_DEVICE = _forced_device
+elif torch.cuda.is_available():
+    WHISPER_DEVICE = "cuda"
+else:
+    WHISPER_DEVICE = "cpu"
+
+print(f"Loading Whisper ({WHISPER_MODEL}) on {WHISPER_DEVICE}...")
+if WHISPER_DEVICE == "cuda":
+    print(f"  GPU: {torch.cuda.get_device_name(0)}")
+elif _forced_device != "cpu":
+    print("  No CUDA GPU detected (or PyTorch was installed CPU-only) — "
+          "running on CPU. See the GPU setup notes below load_model() if "
+          "you have an NVIDIA GPU and want to use it.")
+
+_whisper = whisper.load_model(WHISPER_MODEL, device=WHISPER_DEVICE)
+
+# Only one Whisper model instance exists, and on GPU it lives in a small
+# (4GB-class) pool of VRAM shared by everyone. If two requests call
+# .transcribe() at literally the same instant from different threads, they
+# can corrupt each other's GPU memory or throw CUDA out-of-memory errors.
+# This semaphore makes concurrent transcriptions queue up and run one at a
+# time — safe on any GPU size, and on CPU it just prevents needless
+# thread-thrashing. Everything else (LanguageTool, Gemini, saving to the DB)
+# still runs freely in parallel across users; only the actual GPU-bound
+# Whisper call is serialized. Override via WHISPER_CONCURRENCY if you move
+# to a bigger GPU that can genuinely run more than one transcription at once.
+WHISPER_CONCURRENCY = int(os.environ.get("WHISPER_CONCURRENCY", "1"))
+_whisper_semaphore = threading.Semaphore(WHISPER_CONCURRENCY)
 print(f"Whisper device: {_whisper.device}")  # 'cuda' if a GPU was found, else 'cpu'
 print("Loading LanguageTool...")
 _lt = language_tool_python.LanguageTool("en-US")
@@ -118,6 +185,10 @@ print("Loading Gemini client...")
 # future.result(timeout=...) guard around the call in _run_gemini_review,
 # since some SDK versions don't always honor http_options reliably.
 GEMINI_TIMEOUT_SEC = float(os.environ.get("GEMINI_TIMEOUT_SEC", "25"))
+# Gemini review is required (see _run_gemini_review) — these control how hard
+# it retries before finally giving up and failing the request.
+GEMINI_MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "5"))
+GEMINI_RETRY_BASE_SEC = float(os.environ.get("GEMINI_RETRY_BASE_SEC", "2"))
 _gemini = genai.Client(
     api_key=os.environ.get("GEMINI_API_KEY", ""),
     http_options=genai_types.HttpOptions(timeout=int(GEMINI_TIMEOUT_SEC * 1000)),
@@ -130,15 +201,29 @@ LLM_REVIEW_PROMPT = """You are a kind English teacher reviewing what a school st
 The student's transcript:
 \"\"\"{transcript}\"\"\"
 
-Find EVERY issue - especially the ones a rule-based checker would miss:
+The student's fluency metrics for context:
+  - Speaking rate: {wpm} words per minute (140-160 is typically fluent)
+  - Filler words used: {filler_count}
+  - Long pauses (over 1.5s): {long_pauses}
+
+Find EVERY grammar/structure issue - especially ones a rule-based checker would miss:
   - wrong verb tense
   - wrong word choice / semantic errors
   - awkward sentence structure, run-ons, or fragments
   - missing/wrong articles or prepositions
   - subject-verb agreement
 
+Then give an overall speaking score from 1 to 10, considering grammar accuracy,
+sentence structure, vocabulary, and the fluency metrics above together. Score
+like a supportive teacher grading a school speaking exercise, not a strict
+examiner - a student with a couple of small mistakes and decent fluency
+should land around 7-8, not 4-5. Reserve 9-10 for genuinely clean, fluent
+speech and 1-3 for speech that's very hard to follow.
+
 Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
 {{
+  "score": integer from 1 to 10,
+  "score_reason": "one short encouraging sentence explaining the score, in kid-friendly language",
   "corrected": "the full transcript rewritten correctly, preserving the student's meaning",
   "mistakes": [
     {{
@@ -150,7 +235,7 @@ Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
   ]
 }}
 
-If truly no issues, return {{"corrected": "<original transcript unchanged>", "mistakes": []}}."""
+If truly no grammar issues, still give a score and return "mistakes": []."""
 
 
 def _fmt_time(seconds: float) -> str:
@@ -232,29 +317,70 @@ def _run_languagetool(transcript: str) -> list:
     return grammar
 
 
-def _run_gemini_review(transcript: str):
-    """Returns (corrected_transcript, extra_mistakes)."""
-    corrected = transcript
-    mistakes = []
-    if transcript and os.environ.get("GEMINI_API_KEY"):
+def _run_gemini_review(transcript: str, wpm: float, filler_count: int, long_pauses: int):
+    """Returns (corrected_transcript, extra_mistakes, score, score_reason).
+
+    Gemini review is treated as REQUIRED, not optional: LanguageTool alone
+    misses meaning-level mistakes (wrong tense, wrong word choice), which is
+    the whole reason Gemini was added. So instead of silently swallowing a
+    single failure and shipping a session with half its review missing, this
+    retries with exponential backoff, and only gives up (raising, so the
+    request fails loudly) after GEMINI_MAX_RETRIES attempts.
+    """
+    if not transcript:
+        return transcript, [], None, None
+    if not os.environ.get("GEMINI_API_KEY"):
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. Gemini review is required for this "
+            "app to work — set the env var and restart the server."
+        )
+
+    prompt = LLM_REVIEW_PROMPT.format(
+        transcript=transcript,
+        wpm=round(wpm),
+        filler_count=filler_count,
+        long_pauses=long_pauses,
+    )
+
+    last_err = None
+    for attempt in range(1, GEMINI_MAX_RETRIES + 1):
         try:
             resp = _gemini.models.generate_content(
                 model="gemini-3.6-flash",
-                contents=LLM_REVIEW_PROMPT.format(transcript=transcript),
+                contents=prompt,
             )
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", resp.text.strip()).strip()
             parsed = json.loads(raw)
             corrected = parsed.get("corrected", transcript)
-            for g in parsed.get("mistakes", []):
-                mistakes.append({
-                    "rule_id": g.get("rule_id", "GENERAL"),
-                    "wrong": g.get("wrong", ""),
-                    "correction": g.get("correction", ""),
-                    "message": g.get("message", ""),
-                })
+            mistakes = [{
+                "rule_id": g.get("rule_id", "GENERAL"),
+                "wrong": g.get("wrong", ""),
+                "correction": g.get("correction", ""),
+                "message": g.get("message", ""),
+            } for g in parsed.get("mistakes", [])]
+            score = parsed.get("score")
+            # Clamp defensively in case the model drifts outside 1-10.
+            if isinstance(score, (int, float)):
+                score = max(1, min(10, round(score)))
+            else:
+                score = None
+            score_reason = parsed.get("score_reason", "")
+            return corrected, mistakes, score, score_reason
         except Exception as e:
-            print(f"Gemini review skipped: {e}")
-    return corrected, mistakes
+            last_err = e
+            print(f"[gemini] attempt {attempt}/{GEMINI_MAX_RETRIES} failed: {e}")
+            if attempt < GEMINI_MAX_RETRIES:
+                wait = GEMINI_RETRY_BASE_SEC * (2 ** (attempt - 1))
+                print(f"[gemini] retrying in {wait:.0f}s...")
+                time.sleep(wait)
+
+    # Every attempt failed — raise rather than quietly returning the
+    # uncorrected transcript, so the caller (and the person testing the app)
+    # sees a clear error instead of a session that's silently incomplete.
+    raise RuntimeError(
+        f"Gemini review failed after {GEMINI_MAX_RETRIES} attempts. "
+        f"Last error: {last_err}"
+    )
 
 
 # LanguageTool and Gemini both only need the transcript, so run them
@@ -266,7 +392,8 @@ _review_executor = ThreadPoolExecutor(max_workers=4)
 def analyze_audio(audio_path: str) -> dict:
     t_start = time.time()
 
-    result = _whisper.transcribe(audio_path, word_timestamps=True, language="en")
+    with _whisper_semaphore:
+        result = _whisper.transcribe(audio_path, word_timestamps=True, language="en")
     transcript = result["text"].strip()
     segments = result.get("segments", [])
     t_whisper = time.time()
@@ -298,15 +425,16 @@ def analyze_audio(audio_path: str) -> dict:
         fillers.extend([f] * len(re.findall(rf"\b{re.escape(f)}\b", lower)))
 
     lt_future = _review_executor.submit(_run_languagetool, transcript)
-    gemini_future = _review_executor.submit(_run_gemini_review, transcript)
+    gemini_future = _review_executor.submit(
+        _run_gemini_review, transcript, wpm, len(fillers), long_
+    )
     grammar = lt_future.result()
-    try:
-        corrected, gemini_mistakes = gemini_future.result(timeout=GEMINI_TIMEOUT_SEC)
-        grammar.extend(gemini_mistakes)
-    except FutureTimeoutError:
-        print(f"[timing] Gemini review exceeded {GEMINI_TIMEOUT_SEC}s — "
-              f"skipping it for this session (LanguageTool results still used).")
-        corrected = transcript
+    # Gemini review is required now (see _run_gemini_review's retry logic) —
+    # no timeout-and-skip here. If it ultimately fails after all retries,
+    # that exception propagates up and the /api/analyze request fails with
+    # a clear error instead of silently shipping a session without it.
+    corrected, gemini_mistakes, score, score_reason = gemini_future.result()
+    grammar.extend(gemini_mistakes)
     t_review = time.time()
     print(f"[timing] grammar review (LanguageTool + Gemini, parallel): {t_review - t_whisper:.1f}s")
     print(f"[timing] total: {t_review - t_start:.1f}s")
@@ -314,6 +442,8 @@ def analyze_audio(audio_path: str) -> dict:
     return {
         "transcript": transcript,
         "corrected": corrected,
+        "score": score,
+        "score_reason": score_reason,
         "duration": duration,
         "wpm": wpm,
         "word_count": len(words),
@@ -353,6 +483,8 @@ def save_session(student_name: str, roll_number: str, grade: str, section: str,
             medium_pauses=analysis["medium_pauses"],
             long_pauses=analysis["long_pauses"],
             avg_pause_ms=analysis["avg_pause_ms"],
+            score=analysis.get("score"),
+            score_reason=analysis.get("score_reason"),
         )
         db.add(session)
         db.commit()
@@ -393,9 +525,24 @@ async def analyze(
     with open(save_path, "wb") as f:
         f.write(await audio.read())
 
-    analysis = analyze_audio(str(save_path))
-    session_id = save_session(student_name, roll_number, grade, section,
-                               str(save_path), analysis)
+    try:
+        # analyze_audio() and save_session() are both blocking (CPU/GPU work,
+        # subprocess calls, disk I/O) — running them directly in this async
+        # function would freeze FastAPI's single event loop for every other
+        # request (including someone just loading their history) until this
+        # one finishes. asyncio.to_thread hands the work to a background
+        # thread so other requests keep being served concurrently.
+        analysis = await asyncio.to_thread(analyze_audio, str(save_path))
+    except Exception as e:
+        # Most likely cause here is _run_gemini_review exhausting its
+        # retries (see GEMINI_MAX_RETRIES) — surfaced as a clean error
+        # instead of a raw 500 traceback, since Gemini review is required.
+        raise HTTPException(502, f"Analysis failed: {e}")
+
+    session_id = await asyncio.to_thread(
+        save_session, student_name, roll_number, grade, section,
+        str(save_path), analysis,
+    )
     analysis["session_id"] = session_id
     return analysis
 
@@ -434,6 +581,7 @@ def student_detail(roll_number: str):
                 "fillers": s.filler_count,
                 "long_pauses": s.long_pauses,
                 "grammar_mistakes": len(grammar_ms),
+                "score": s.score,
                 "transcript": s.transcript,
             })
         top_rules = sorted(rule_counts.items(), key=lambda x: -x[1])[:10]

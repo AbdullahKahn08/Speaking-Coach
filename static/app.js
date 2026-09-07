@@ -9,6 +9,7 @@ let student = null;
 try { student = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { student = null; }
 if (!student || !student.name || !student.roll) {
   window.location.href = 'index.html';
+  throw new Error('No student in localStorage — redirecting to index.html');
 }
 
 document.getElementById('idName').textContent = student.name;
@@ -298,6 +299,15 @@ function renderResults(d) {
         </div>`).join('')
     : `<div class="empty">Pacing was steady throughout — no long pauses or rushed/slow stretches detected.</div>`;
 
+  const scoreBlock = (d.score !== null && d.score !== undefined) ? `
+    <div class="score-card" data-reveal>
+      <div class="score-ring" style="--pct:${(d.score / 10 * 100).toFixed(0)}">
+        <span class="score-num">${d.score}</span>
+        <span class="score-den">/10</span>
+      </div>
+      <div class="score-reason">${escape(d.score_reason || '')}</div>
+    </div>` : '';
+
   results.innerHTML = `
     <div style="margin-top: 48px;">
       <div class="success" data-reveal>
@@ -305,6 +315,8 @@ function renderResults(d) {
         Session #${d.session_id} saved
       </div>
     </div>
+
+    ${scoreBlock}
 
     <div class="section-head" data-reveal>
       <span class="num">01</span>
@@ -412,6 +424,7 @@ async function loadStudentDetail(rollNumber) {
     const sessionRows = d.sessions.map(s => `
       <tr>
         <td>${escape(s.date)}</td>
+        <td>${s.score !== null && s.score !== undefined ? s.score + '/10' : '—'}</td>
         <td>${s.wpm}</td>
         <td>${s.duration}s</td>
         <td>${s.fillers}</td>
@@ -440,7 +453,7 @@ async function loadStudentDetail(rollNumber) {
         <h2>Session History</h2>
       </div>
       <table class="session-table">
-        <thead><tr><th>Date</th><th>WPM</th><th>Duration</th><th>Fillers</th><th>Long pauses</th><th>Grammar</th></tr></thead>
+        <thead><tr><th>Date</th><th>Score</th><th>WPM</th><th>Duration</th><th>Fillers</th><th>Long pauses</th><th>Grammar</th></tr></thead>
         <tbody>${sessionRows}</tbody>
       </table>
 
