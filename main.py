@@ -196,7 +196,7 @@ _gemini = genai.Client(
 print("Ready.")
 
 
-LLM_REVIEW_PROMPT = """You are a kind English teacher reviewing what a school student said (transcribed from audio).
+LLM_REVIEW_PROMPT = """You are an English language assessor conducting a formal evaluation of a school student's spoken English (transcribed from audio).
 
 The student's transcript:
 \"\"\"{transcript}\"\"\"
@@ -206,36 +206,48 @@ The student's fluency metrics for context:
   - Filler words used: {filler_count}
   - Long pauses (over 1.5s): {long_pauses}
 
-Find EVERY grammar/structure issue - especially ones a rule-based checker would miss:
-  - wrong verb tense
-  - wrong word choice / semantic errors
+Identify EVERY grammar/structure issue - especially ones a rule-based checker would miss:
+  - incorrect verb tense
+  - incorrect word choice / semantic errors
   - awkward sentence structure, run-ons, or fragments
-  - missing/wrong articles or prepositions
+  - missing or incorrect articles or prepositions
   - subject-verb agreement
 
-Then give an overall speaking score from 1 to 10, considering grammar accuracy,
+Then assign an overall speaking score from 1 to 10, considering grammar accuracy,
 sentence structure, vocabulary, and the fluency metrics above together. Score
-like a supportive teacher grading a school speaking exercise, not a strict
-examiner - a student with a couple of small mistakes and decent fluency
-should land around 7-8, not 4-5. Reserve 9-10 for genuinely clean, fluent
-speech and 1-3 for speech that's very hard to follow.
+fairly, as a teacher grading a school speaking exercise would - a response with
+a couple of minor errors and reasonable fluency should land around 7-8, not
+4-5. Reserve 9-10 for genuinely clean, fluent speech and 1-3 for speech that
+is very difficult to follow.
+
+Write the score_reason and each mistake's message in a formal, evaluative
+register, as an examiner would write on an assessment report - not as an
+encouraging teacher praising a student. Concretely:
+  - State observations plainly (e.g. "Speaking rate was within the fluent
+    range; two grammatical errors were noted.") rather than praising effort
+    or ability (not "You spoke fantastically!").
+  - Do not use exclamation marks.
+  - Do not use words like "great", "fantastic", "excellent job", "well done",
+    "nice work", or similar praise language.
+  - Refer to "the response" or "the speaker", not "you", to keep the register
+    impersonal and report-like.
 
 Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
 {{
   "score": integer from 1 to 10,
-  "score_reason": "one short encouraging sentence explaining the score, in kid-friendly language",
+  "score_reason": "one concise, formal, evaluative sentence stating the basis for the score, per the register rules above",
   "corrected": "the full transcript rewritten correctly, preserving the student's meaning",
   "mistakes": [
     {{
       "rule_id": "short uppercase category, one of: VERB_TENSE, WORD_CHOICE, ARTICLE, PREPOSITION, SUBJECT_VERB_AGREEMENT, WORD_ORDER, RUN_ON, FRAGMENT, PLURAL",
       "wrong": "the exact wrong phrase from the transcript",
       "correction": "the corrected phrase",
-      "message": "one short sentence explaining the mistake in kid-friendly language"
+      "message": "one concise, formal sentence explaining the mistake and the applicable rule, per the register rules above"
     }}
   ]
 }}
 
-If truly no grammar issues, still give a score and return "mistakes": []."""
+If truly no grammar issues, still assign a score and return "mistakes": []."""
 
 
 def _fmt_time(seconds: float) -> str:

@@ -417,21 +417,24 @@
       flex: none;
       width: 92px; height: 92px; border-radius: 50%;
       background: conic-gradient(var(--accent-bright) calc(var(--pct) * 1%), var(--line) 0);
-      display: grid; place-items: center;
+      display: flex; align-items: center; justify-content: center;
       position: relative;
     }
     .score-ring::before {
       content: ''; position: absolute; inset: 8px;
       border-radius: 50%; background: var(--surface);
     }
-    .score-num {
+    .score-value {
       position: relative; z-index: 1;
+      display: flex; align-items: baseline; justify-content: center;
+      line-height: 1;
+    }
+    .score-num {
       font-family: var(--serif); font-weight: 700; font-size: 30px;
-      color: var(--ink);
+      color: var(--ink); line-height: 1;
     }
     .score-den {
-      position: relative; z-index: 1;
-      font-size: 12px; color: var(--muted); margin-left: 1px;
+      font-size: 12px; color: var(--muted); margin-left: 1px; line-height: 1;
     }
     .score-reason {
       font-family: var(--serif); font-style: italic; font-size: 18px;

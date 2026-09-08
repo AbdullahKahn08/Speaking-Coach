@@ -302,8 +302,10 @@ function renderResults(d) {
   const scoreBlock = (d.score !== null && d.score !== undefined) ? `
     <div class="score-card" data-reveal>
       <div class="score-ring" style="--pct:${(d.score / 10 * 100).toFixed(0)}">
-        <span class="score-num">${d.score}</span>
-        <span class="score-den">/10</span>
+        <span class="score-value">
+          <span class="score-num">${d.score}</span>
+          <span class="score-den">/10</span>
+        </span>
       </div>
       <div class="score-reason">${escape(d.score_reason || '')}</div>
     </div>` : '';
@@ -349,15 +351,15 @@ function renderResults(d) {
 
     <div class="section-head" data-reveal>
       <span class="num">03</span>
-      <h2>Pacing &amp; Pauses</h2>
-    </div>
-    <div class="pacing-list">${pacingBlock}</div>
-
-    <div class="section-head" data-reveal>
-      <span class="num">04</span>
       <h2>Grammar &amp; Structure</h2>
     </div>
     <div class="mistakes-list">${mistakes}</div>
+
+    <div class="section-head" data-reveal>
+      <span class="num">04</span>
+      <h2>Pacing &amp; Pauses</h2>
+    </div>
+    <div class="pacing-list">${pacingBlock}</div>
 
     ${fillerBlock}
   `;
