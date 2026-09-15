@@ -299,6 +299,36 @@ function renderResults(d) {
         </div>`).join('')
     : `<div class="empty">Pacing was steady throughout — no long pauses or rushed/slow stretches detected.</div>`;
 
+  const CRITERIA_LABELS = {
+    content_coherence: 'Content Relevancy & Coherence',
+    fluency: 'Fluency',
+    accuracy_pronunciation: 'Accuracy & Pronunciation',
+    expression: 'Expression (Vocabulary & Cohesion)',
+  };
+
+  const criteriaRows = (d.criteria && Object.keys(d.criteria).length) ? `
+    <div class="rubric-list" data-reveal>
+      ${Object.entries(CRITERIA_LABELS).map(([key, label]) => {
+        const c = d.criteria[key];
+        if (!c) return '';
+        return `
+          <div class="rubric-row">
+            <div class="rubric-row-top">
+              <span class="rubric-label">${label}</span>
+              <span class="rubric-band">${c.band.toFixed(1)}/2.0</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:${(c.band / 2 * 100).toFixed(0)}%"></div></div>
+            <div class="rubric-comment">${escape(c.comment || '')}</div>
+          </div>`;
+      }).join('')}
+    </div>` : '';
+
+  const feedbackBlock = (d.strength || d.improve) ? `
+    <div class="feedback-card" data-reveal>
+      ${d.strength ? `<div class="feedback-row strength"><span class="feedback-tag">Strength</span><span>${escape(d.strength)}</span></div>` : ''}
+      ${d.improve ? `<div class="feedback-row improve"><span class="feedback-tag">Improve</span><span>${escape(d.improve)}</span></div>` : ''}
+    </div>` : '';
+
   const scoreBlock = (d.score !== null && d.score !== undefined) ? `
     <div class="score-card" data-reveal>
       <div class="score-ring" style="--pct:${(d.score / 10 * 100).toFixed(0)}">
@@ -308,7 +338,9 @@ function renderResults(d) {
         </span>
       </div>
       <div class="score-reason">${escape(d.score_reason || '')}</div>
-    </div>` : '';
+    </div>
+    ${criteriaRows}
+    ${feedbackBlock}` : '';
 
   results.innerHTML = `
     <div style="margin-top: 48px;">

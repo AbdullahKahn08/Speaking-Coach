@@ -441,6 +441,57 @@
       color: var(--ink-soft); line-height: 1.5;
     }
 
+    /* ── Rubric criteria breakdown ── */
+    .rubric-list {
+      background: var(--surface);
+      border-radius: 24px; padding: 28px 32px;
+      margin-bottom: 16px;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+    .rubric-row + .rubric-row {
+      padding-top: 20px; border-top: 1px solid var(--line);
+    }
+    .rubric-row-top {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .rubric-label {
+      font-family: var(--serif); font-weight: 600; font-size: 15px;
+      color: var(--ink);
+    }
+    .rubric-band {
+      font-size: 12px; font-weight: 600; color: var(--accent-bright);
+      letter-spacing: 0.02em; flex: none; margin-left: 16px;
+    }
+    .rubric-comment {
+      font-size: 13px; color: var(--ink-soft); line-height: 1.55; margin-top: 10px;
+    }
+
+    /* ── Strength / improve feedback ── */
+    .feedback-card {
+      background: var(--surface);
+      border-radius: 24px; padding: 24px 32px;
+      margin-bottom: 32px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .feedback-row {
+      display: flex; align-items: baseline; gap: 12px;
+      font-size: 14px; color: var(--ink-soft); line-height: 1.55;
+    }
+    .feedback-tag {
+      flex: none;
+      font-family: var(--sans); font-size: 10px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 999px;
+    }
+    .feedback-row.strength .feedback-tag {
+      background: color-mix(in srgb, var(--accent-bright) 16%, transparent);
+      color: var(--accent-dim);
+    }
+    .feedback-row.improve .feedback-tag {
+      background: var(--bg); color: var(--ink-soft);
+    }
+
     /* ── Loader ── */
     .loader-wrap {
       display: flex; flex-direction: column; align-items: center; gap: 20px;

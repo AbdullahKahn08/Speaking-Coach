@@ -64,8 +64,11 @@ class Session(Base):
     medium_pauses = Column(Integer)
     long_pauses = Column(Integer)
     avg_pause_ms = Column(Float)
-    score = Column(Integer)
+    score = Column(Float)         # rubric total /10, in 0.5 steps (see RUBRIC_PROMPT)
     score_reason = Column(Text)
+    rubric_criteria = Column(Text)  # JSON: {criterion_key: {"score":.., "band":.., "comment":..}}
+    strength = Column(Text)       # required "AI feedback" per the assessment spec
+    improve = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     student = relationship("Student", back_populates="sessions")
     mistakes = relationship("Mistake", back_populates="session")
@@ -196,7 +199,7 @@ _gemini = genai.Client(
 print("Ready.")
 
 
-LLM_REVIEW_PROMPT = """You are an English language assessor conducting a formal evaluation of a school student's spoken English (transcribed from audio).
+RUBRIC_PROMPT = """You are an English language assessor conducting a formal, rubric-based evaluation of a Grade 7 student's spoken English (transcribed from audio).
 
 The student's transcript:
 \"\"\"{transcript}\"\"\"
@@ -206,48 +209,93 @@ The student's fluency metrics for context:
   - Filler words used: {filler_count}
   - Long pauses (over 1.5s): {long_pauses}
 
-Identify EVERY grammar/structure issue - especially ones a rule-based checker would miss:
+FAIRNESS RULE (mandatory): Do not penalize the speaker for having a Pakistani
+or regional English accent. Judge pronunciation and intelligibility only -
+whether the words are clear and understandable - never accent itself.
+
+Score the response against these FOUR rubric criteria. For each one, select
+the band (2.0, 1.5, 1.0, or 0.5) whose description best matches the response,
+using the exact band definitions below - do not invent your own criteria or
+scale.
+
+1. CONTENT RELEVANCY AND COHERENCE
+  2.0 - Maintains relevance throughout without deviating; gives diverse ideas; develops the topic coherently with a proper start, middle and end.
+  1.5 - Content is on-topic but ideas are a bit limited, with adequate coherence.
+  1.0 - Misses some points and doesn't speak for the given time; some breakdowns in coherence.
+  0.5 - Insufficient or totally deviated content; breakdowns in coherence.
+
+2. FLUENCY
+  2.0 - Speaks fluently with natural pauses and conversational fillers ("you know", "I mean", "well", "basically"), without repetition or self-correction.
+  1.5 - Speaks fluently with little pauses ("um", "uh", "mm-hmm"), showing little hesitation, occasional repetition and self-correction.
+  1.0 - Cannot respond without noticeable pauses; may speak slowly, with frequent repetition and self-correction.
+  0.5 - Speaks with long pauses, repetitions and hesitation.
+
+3. ACCURACY AND PRONUNCIATION
+  2.0 - Produces consistently accurate grammatical structures apart from occasional slips; uses a full range of pronunciation features with precision; effortless to understand.
+  1.5 - Produces a majority of error-free sentences with only occasional basic errors; easy to understand with minimal pronunciation errors.
+  1.0 - May make frequent grammar mistakes though these rarely cause comprehension problems; can generally be understood, though mispronunciation of individual words reduces clarity at times.
+  0.5 - Errors are frequent and may lead to misunderstanding; mispronunciations are frequent and cause difficulty for the listener.
+
+4. EXPRESSION (VOCABULARY AND COHESION)
+  2.0 - Uses vocabulary with full flexibility and precision; doesn't repeat the same words/structures; uses a variety of words and structures; uses cohesive devices to connect sentences.
+  1.5 - Has a wide enough vocabulary to discuss the topic at length and make meaning clear, despite occasional inappropriate word choices; little use of cohesive devices.
+  1.0 - Uses vocabulary with limited flexibility and hardly any cohesive devices.
+  0.5 - Makes frequent errors in word choice; gives only simple responses; frequently unable to convey the basic message.
+
+("Confidence and Body Language" is part of the full rubric but requires video
+- eye contact, gestures, posture - which is not available from audio. Do not
+attempt to score it; it is excluded from this evaluation entirely.)
+
+Separately, identify EVERY grammar/structure issue for the mistake list below
+- especially ones the rubric bands above wouldn't individually call out:
   - incorrect verb tense
   - incorrect word choice / semantic errors
   - awkward sentence structure, run-ons, or fragments
   - missing or incorrect articles or prepositions
   - subject-verb agreement
 
-Then assign an overall speaking score from 1 to 10, considering grammar accuracy,
-sentence structure, vocabulary, and the fluency metrics above together. Score
-fairly, as a teacher grading a school speaking exercise would - a response with
-a couple of minor errors and reasonable fluency should land around 7-8, not
-4-5. Reserve 9-10 for genuinely clean, fluent speech and 1-3 for speech that
-is very difficult to follow.
-
-Write the score_reason and each mistake's message in a formal, evaluative
-register, as an examiner would write on an assessment report - not as an
-encouraging teacher praising a student. Concretely:
+Write score_reason, each criterion's comment, and each mistake's message in a
+formal, evaluative register, as an examiner would write on an assessment
+report - not as an encouraging teacher praising a student. Concretely:
   - State observations plainly (e.g. "Speaking rate was within the fluent
-    range; two grammatical errors were noted.") rather than praising effort
-    or ability (not "You spoke fantastically!").
+    range; two grammatical errors were noted.") rather than praising effort.
   - Do not use exclamation marks.
   - Do not use words like "great", "fantastic", "excellent job", "well done",
     "nice work", or similar praise language.
-  - Refer to "the response" or "the speaker", not "you", to keep the register
-    impersonal and report-like.
+  - Refer to "the response" or "the speaker", not "you".
+
+Then write exactly one strength and one improvement point, each one short
+sentence in simple English suitable for a Grade 7 student to read themselves
+(this part only may be encouraging in tone, per the school's feedback format
+- e.g. "Strength: The response answered the question clearly and gave good
+reasons." / "Improve: Try to reduce long pauses and use a wider range of
+vocabulary.").
 
 Return ONLY a JSON object (no prose, no markdown fences) with this exact shape:
 {{
-  "score": integer from 1 to 10,
-  "score_reason": "one concise, formal, evaluative sentence stating the basis for the score, per the register rules above",
+  "criteria": {{
+    "content_coherence": {{"band": 2.0, "comment": "one formal sentence justifying this band"}},
+    "fluency": {{"band": 2.0, "comment": "one formal sentence justifying this band"}},
+    "accuracy_pronunciation": {{"band": 2.0, "comment": "one formal sentence justifying this band"}},
+    "expression": {{"band": 2.0, "comment": "one formal sentence justifying this band"}}
+  }},
+  "score_reason": "one concise, formal, evaluative sentence summarizing the overall basis for the score",
+  "strength": "one short encouraging sentence in simple Grade 7 English",
+  "improve": "one short constructive sentence in simple Grade 7 English",
   "corrected": "the full transcript rewritten correctly, preserving the student's meaning",
   "mistakes": [
     {{
       "rule_id": "short uppercase category, one of: VERB_TENSE, WORD_CHOICE, ARTICLE, PREPOSITION, SUBJECT_VERB_AGREEMENT, WORD_ORDER, RUN_ON, FRAGMENT, PLURAL",
       "wrong": "the exact wrong phrase from the transcript",
       "correction": "the corrected phrase",
-      "message": "one concise, formal sentence explaining the mistake and the applicable rule, per the register rules above"
+      "message": "one concise, formal sentence explaining the mistake and the applicable rule"
     }}
   ]
 }}
 
-If truly no grammar issues, still assign a score and return "mistakes": []."""
+Each "band" value must be exactly one of 2.0, 1.5, 1.0, or 0.5 - no other
+numbers. If truly no grammar issues beyond what the bands capture, still
+score all four criteria and return "mistakes": []."""
 
 
 def _fmt_time(seconds: float) -> str:
@@ -329,25 +377,36 @@ def _run_languagetool(transcript: str) -> list:
     return grammar
 
 
+CRITERIA_KEYS = ("content_coherence", "fluency", "accuracy_pronunciation", "expression")
+VALID_BANDS = {2.0, 1.5, 1.0, 0.5}
+
+
 def _run_gemini_review(transcript: str, wpm: float, filler_count: int, long_pauses: int):
-    """Returns (corrected_transcript, extra_mistakes, score, score_reason).
+    """Returns (corrected_transcript, extra_mistakes, score, score_reason,
+    criteria, strength, improve).
+
+    `criteria` is a dict of the 4 rubric bands actually scored (see
+    RUBRIC_PROMPT) — "Confidence and Body Language" is excluded since it
+    needs video. `score` is those 4 bands summed (max 8) and rescaled ×1.25
+    to a /10 total, per the school's rubric, so an AI-only session score
+    still means the same thing as the full 5-criteria in-person rubric.
 
     Gemini review is treated as REQUIRED, not optional: LanguageTool alone
-    misses meaning-level mistakes (wrong tense, wrong word choice), which is
-    the whole reason Gemini was added. So instead of silently swallowing a
-    single failure and shipping a session with half its review missing, this
-    retries with exponential backoff, and only gives up (raising, so the
-    request fails loudly) after GEMINI_MAX_RETRIES attempts.
+    misses meaning-level mistakes, which is the whole reason Gemini was
+    added. So instead of silently swallowing a single failure and shipping
+    a session with half its review missing, this retries with exponential
+    backoff, and only gives up (raising, so the request fails loudly) after
+    GEMINI_MAX_RETRIES attempts.
     """
     if not transcript:
-        return transcript, [], None, None
+        return transcript, [], None, None, {}, "", ""
     if not os.environ.get("GEMINI_API_KEY"):
         raise RuntimeError(
             "GEMINI_API_KEY is not set. Gemini review is required for this "
             "app to work — set the env var and restart the server."
         )
 
-    prompt = LLM_REVIEW_PROMPT.format(
+    prompt = RUBRIC_PROMPT.format(
         transcript=transcript,
         wpm=round(wpm),
         filler_count=filler_count,
@@ -363,6 +422,7 @@ def _run_gemini_review(transcript: str, wpm: float, filler_count: int, long_paus
             )
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", resp.text.strip()).strip()
             parsed = json.loads(raw)
+
             corrected = parsed.get("corrected", transcript)
             mistakes = [{
                 "rule_id": g.get("rule_id", "GENERAL"),
@@ -370,14 +430,29 @@ def _run_gemini_review(transcript: str, wpm: float, filler_count: int, long_paus
                 "correction": g.get("correction", ""),
                 "message": g.get("message", ""),
             } for g in parsed.get("mistakes", [])]
-            score = parsed.get("score")
-            # Clamp defensively in case the model drifts outside 1-10.
-            if isinstance(score, (int, float)):
-                score = max(1, min(10, round(score)))
-            else:
-                score = None
+
+            raw_criteria = parsed.get("criteria", {})
+            criteria = {}
+            raw_sum = 0.0
+            for key in CRITERIA_KEYS:
+                entry = raw_criteria.get(key, {})
+                band = entry.get("band")
+                # Snap defensively to the nearest valid band in case the
+                # model drifts off the four allowed values.
+                if not isinstance(band, (int, float)) or band not in VALID_BANDS:
+                    band = min(VALID_BANDS, key=lambda v: abs(v - (band or 1.0))) \
+                        if isinstance(band, (int, float)) else 1.0
+                criteria[key] = {"band": band, "comment": entry.get("comment", "")}
+                raw_sum += band
+
+            # 4 criteria × 2.0 max = 8 raw points -> rescale to a /10 total,
+            # rounded to the nearest 0.5 so it still reads as a rubric score.
+            score = round((raw_sum / 8.0 * 10) * 2) / 2
+
             score_reason = parsed.get("score_reason", "")
-            return corrected, mistakes, score, score_reason
+            strength = parsed.get("strength", "")
+            improve = parsed.get("improve", "")
+            return corrected, mistakes, score, score_reason, criteria, strength, improve
         except Exception as e:
             last_err = e
             print(f"[gemini] attempt {attempt}/{GEMINI_MAX_RETRIES} failed: {e}")
@@ -445,7 +520,7 @@ def analyze_audio(audio_path: str) -> dict:
     # no timeout-and-skip here. If it ultimately fails after all retries,
     # that exception propagates up and the /api/analyze request fails with
     # a clear error instead of silently shipping a session without it.
-    corrected, gemini_mistakes, score, score_reason = gemini_future.result()
+    corrected, gemini_mistakes, score, score_reason, criteria, strength, improve = gemini_future.result()
     grammar.extend(gemini_mistakes)
     t_review = time.time()
     print(f"[timing] grammar review (LanguageTool + Gemini, parallel): {t_review - t_whisper:.1f}s")
@@ -456,6 +531,9 @@ def analyze_audio(audio_path: str) -> dict:
         "corrected": corrected,
         "score": score,
         "score_reason": score_reason,
+        "criteria": criteria,
+        "strength": strength,
+        "improve": improve,
         "duration": duration,
         "wpm": wpm,
         "word_count": len(words),
@@ -497,6 +575,9 @@ def save_session(student_name: str, roll_number: str, grade: str, section: str,
             avg_pause_ms=analysis["avg_pause_ms"],
             score=analysis.get("score"),
             score_reason=analysis.get("score_reason"),
+            rubric_criteria=json.dumps(analysis.get("criteria", {})),
+            strength=analysis.get("strength"),
+            improve=analysis.get("improve"),
         )
         db.add(session)
         db.commit()
