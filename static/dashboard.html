@@ -492,6 +492,69 @@
       background: var(--bg); color: var(--ink-soft);
     }
 
+    /* ── "How this score is calculated" — full rubric grid ── */
+    .methodology {
+      background: var(--surface);
+      border-radius: 24px; padding: 24px 32px;
+      margin-bottom: 32px;
+    }
+    .methodology summary {
+      cursor: pointer; list-style: none;
+      font-family: var(--serif); font-weight: 600; font-size: 16px;
+      color: var(--ink);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .methodology summary::-webkit-details-marker { display: none; }
+    .methodology summary::before {
+      content: '›'; display: inline-block;
+      font-size: 20px; color: var(--accent-bright);
+      transition: transform 200ms ease;
+    }
+    .methodology[open] summary::before { transform: rotate(90deg); }
+    .methodology-body { margin-top: 18px; }
+    .methodology-note {
+      font-size: 12.5px; color: var(--muted); line-height: 1.6;
+      margin: 0 0 14px;
+    }
+    .methodology-scroll {
+      overflow-x: auto; border-radius: 14px;
+      border: 1px solid var(--line);
+    }
+    .methodology-table {
+      width: 100%; min-width: 780px; border-collapse: collapse; font-size: 12px;
+    }
+    .methodology-table thead th {
+      background: var(--bg);
+      padding: 10px 12px; text-align: center;
+      font-family: var(--serif); font-weight: 600; font-size: 13px;
+      color: var(--ink); border-bottom: 1px solid var(--line);
+    }
+    .rubric-row-label {
+      text-align: left; padding: 12px; vertical-align: top;
+      font-family: var(--serif); font-weight: 600; font-size: 12.5px;
+      color: var(--ink); background: var(--bg);
+      width: 140px; border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+    .rubric-cell {
+      padding: 10px 12px; vertical-align: top; width: 160px;
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+    }
+    .rubric-cell:last-child { border-right: none; }
+    .rubric-cell-score {
+      font-family: var(--serif); font-weight: 700; font-size: 13px;
+      color: var(--muted); margin-bottom: 4px;
+    }
+    .rubric-cell-text {
+      font-size: 11.5px; color: var(--ink-soft); line-height: 1.5;
+    }
+    .rubric-cell.achieved {
+      background: color-mix(in srgb, var(--accent-bright) 10%, transparent);
+      box-shadow: inset 0 0 0 2px var(--accent-bright);
+    }
+    .rubric-cell.achieved .rubric-cell-score { color: var(--accent-dim); }
+
     /* ── Loader ── */
     .loader-wrap {
       display: flex; flex-direction: column; align-items: center; gap: 20px;

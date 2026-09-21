@@ -199,6 +199,64 @@ _gemini = genai.Client(
 print("Ready.")
 
 
+# Single source of truth for the rubric text — used to BOTH build the Gemini
+# prompt below AND power the /api/rubric endpoint that the dashboard reads to
+# show "how this score is calculated". Keeping one copy means the table a
+# teacher sees always matches exactly what Gemini was actually told to judge
+# against — no risk of the two drifting apart after an edit.
+RUBRIC_DEFINITIONS = {
+    "content_coherence": {
+        "label": "Content Relevancy & Coherence",
+        "bands": {
+            2.0: "Maintains relevance throughout without deviating; gives diverse ideas; develops the topic coherently with a proper start, middle and end.",
+            1.5: "Content is on-topic but ideas are a bit limited, with adequate coherence.",
+            1.0: "Misses some points and doesn't speak for the given time; some breakdowns in coherence.",
+            0.5: "Insufficient or totally deviated content; breakdowns in coherence.",
+        },
+    },
+    "fluency": {
+        "label": "Fluency",
+        "bands": {
+            2.0: 'Speaks fluently with natural pauses and conversational fillers ("you know", "I mean", "well", "basically"), without repetition or self-correction.',
+            1.5: 'Speaks fluently with little pauses ("um", "uh", "mm-hmm"), showing little hesitation, occasional repetition and self-correction.',
+            1.0: "Cannot respond without noticeable pauses; may speak slowly, with frequent repetition and self-correction.",
+            0.5: "Speaks with long pauses, repetitions and hesitation.",
+        },
+    },
+    "accuracy_pronunciation": {
+        "label": "Accuracy & Pronunciation",
+        "bands": {
+            2.0: "Produces consistently accurate grammatical structures apart from occasional slips; uses a full range of pronunciation features with precision; effortless to understand.",
+            1.5: "Produces a majority of error-free sentences with only occasional basic errors; easy to understand with minimal pronunciation errors.",
+            1.0: "May make frequent grammar mistakes though these rarely cause comprehension problems; can generally be understood, though mispronunciation of individual words reduces clarity at times.",
+            0.5: "Errors are frequent and may lead to misunderstanding; mispronunciations are frequent and cause difficulty for the listener.",
+        },
+    },
+    "expression": {
+        "label": "Expression (Vocabulary & Cohesion)",
+        "bands": {
+            2.0: "Uses vocabulary with full flexibility and precision; doesn't repeat the same words/structures; uses a variety of words and structures; uses cohesive devices to connect sentences.",
+            1.5: "Has a wide enough vocabulary to discuss the topic at length and make meaning clear, despite occasional inappropriate word choices; little use of cohesive devices.",
+            1.0: "Uses vocabulary with limited flexibility and hardly any cohesive devices.",
+            0.5: "Makes frequent errors in word choice; gives only simple responses; frequently unable to convey the basic message.",
+        },
+    },
+}
+
+
+def _build_rubric_prompt_section() -> str:
+    """Renders RUBRIC_DEFINITIONS into the numbered block RUBRIC_PROMPT
+    embeds, so the prompt text is generated from the same dict the
+    /api/rubric endpoint serves — never maintained twice."""
+    lines = []
+    for i, (key, crit) in enumerate(RUBRIC_DEFINITIONS.items(), start=1):
+        lines.append(f"{i}. {crit['label'].upper()}")
+        for band in (2.0, 1.5, 1.0, 0.5):
+            lines.append(f"  {band} - {crit['bands'][band]}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
 RUBRIC_PROMPT = """You are an English language assessor conducting a formal, rubric-based evaluation of a Grade 7 student's spoken English (transcribed from audio).
 
 The student's transcript:
@@ -218,29 +276,7 @@ the band (2.0, 1.5, 1.0, or 0.5) whose description best matches the response,
 using the exact band definitions below - do not invent your own criteria or
 scale.
 
-1. CONTENT RELEVANCY AND COHERENCE
-  2.0 - Maintains relevance throughout without deviating; gives diverse ideas; develops the topic coherently with a proper start, middle and end.
-  1.5 - Content is on-topic but ideas are a bit limited, with adequate coherence.
-  1.0 - Misses some points and doesn't speak for the given time; some breakdowns in coherence.
-  0.5 - Insufficient or totally deviated content; breakdowns in coherence.
-
-2. FLUENCY
-  2.0 - Speaks fluently with natural pauses and conversational fillers ("you know", "I mean", "well", "basically"), without repetition or self-correction.
-  1.5 - Speaks fluently with little pauses ("um", "uh", "mm-hmm"), showing little hesitation, occasional repetition and self-correction.
-  1.0 - Cannot respond without noticeable pauses; may speak slowly, with frequent repetition and self-correction.
-  0.5 - Speaks with long pauses, repetitions and hesitation.
-
-3. ACCURACY AND PRONUNCIATION
-  2.0 - Produces consistently accurate grammatical structures apart from occasional slips; uses a full range of pronunciation features with precision; effortless to understand.
-  1.5 - Produces a majority of error-free sentences with only occasional basic errors; easy to understand with minimal pronunciation errors.
-  1.0 - May make frequent grammar mistakes though these rarely cause comprehension problems; can generally be understood, though mispronunciation of individual words reduces clarity at times.
-  0.5 - Errors are frequent and may lead to misunderstanding; mispronunciations are frequent and cause difficulty for the listener.
-
-4. EXPRESSION (VOCABULARY AND COHESION)
-  2.0 - Uses vocabulary with full flexibility and precision; doesn't repeat the same words/structures; uses a variety of words and structures; uses cohesive devices to connect sentences.
-  1.5 - Has a wide enough vocabulary to discuss the topic at length and make meaning clear, despite occasional inappropriate word choices; little use of cohesive devices.
-  1.0 - Uses vocabulary with limited flexibility and hardly any cohesive devices.
-  0.5 - Makes frequent errors in word choice; gives only simple responses; frequently unable to convey the basic message.
+""" + _build_rubric_prompt_section() + """
 
 ("Confidence and Body Language" is part of the full rubric but requires video
 - eye contact, gestures, posture - which is not available from audio. Do not
@@ -638,6 +674,35 @@ async def analyze(
     )
     analysis["session_id"] = session_id
     return analysis
+
+
+@app.get("/api/rubric")
+def get_rubric():
+    """Serves the same rubric text embedded in RUBRIC_PROMPT, so the
+    dashboard's 'how this score is calculated' table is always identical to
+    what Gemini is actually scoring against."""
+    return {
+        "criteria": [
+            {
+                "key": key,
+                "label": crit["label"],
+                "bands": [
+                    {"value": band, "text": crit["bands"][band]}
+                    for band in (2.0, 1.5, 1.0, 0.5)
+                ],
+            }
+            for key, crit in RUBRIC_DEFINITIONS.items()
+        ],
+        "excluded_note": (
+            "Confidence and Body Language is part of the school's full "
+            "rubric but requires video (eye contact, gestures, posture), "
+            "which this app does not capture. It is excluded here."
+        ),
+        "scaling_note": (
+            "The 4 scored criteria are summed (max 8) and rescaled to a "
+            "/10 total, rounded to the nearest 0.5."
+        ),
+    }
 
 
 @app.get("/api/students")

@@ -2,6 +2,17 @@
 
 const STORAGE_KEY = 'speakingCoachStudent';
 
+// Cached once from /api/rubric — this is static reference data (the rubric
+// text doesn't change per session), so we fetch it lazily on first need
+// instead of on every single analysis.
+let _rubricDataPromise = null;
+function getRubricData() {
+  if (!_rubricDataPromise) {
+    _rubricDataPromise = fetch('/api/rubric').then(r => r.json());
+  }
+  return _rubricDataPromise;
+}
+
 // ─── Identity gate ───
 // This page assumes index.html already collected name/roll/grade/section.
 // If that's missing, bounce back to the intake form instead of guessing.
@@ -248,7 +259,7 @@ analyzeBtn.addEventListener('click', async () => {
   try {
     const res = await fetch('/api/analyze', { method: 'POST', body: form });
     if (!res.ok) throw new Error(await res.text());
-    renderResults(await res.json());
+    await renderResults(await res.json());
   } catch (e) {
     results.innerHTML = `<div class="empty">Analysis failed: ${e.message}</div>`;
   } finally {
@@ -257,7 +268,7 @@ analyzeBtn.addEventListener('click', async () => {
 });
 
 // ─── Render results ───
-function renderResults(d) {
+async function renderResults(d) {
   const results = document.getElementById('results');
 
   const mistakes = d.grammar_mistakes.length
@@ -329,6 +340,40 @@ function renderResults(d) {
       ${d.improve ? `<div class="feedback-row improve"><span class="feedback-tag">Improve</span><span>${escape(d.improve)}</span></div>` : ''}
     </div>` : '';
 
+  // "How this score is calculated" — the full rubric grid (all 4 bands per
+  // criterion), with the band actually awarded this session boxed off, the
+  // same idea as a printed rubric matrix: show the whole scale, not just
+  // the one number the student landed on.
+  let methodologyBlock = '';
+  if (d.criteria && Object.keys(d.criteria).length) {
+    const rubric = await getRubricData();
+    const rows = rubric.criteria.map(crit => {
+      const achieved = d.criteria[crit.key];
+      const achievedBand = achieved ? achieved.band : null;
+      const cells = crit.bands.map(b => `
+        <td class="rubric-cell ${achievedBand === b.value ? 'achieved' : ''}">
+          <div class="rubric-cell-score">${b.value.toFixed(1)}</div>
+          <div class="rubric-cell-text">${escape(b.text)}</div>
+        </td>`).join('');
+      return `<tr><th class="rubric-row-label">${escape(crit.label)}</th>${cells}</tr>`;
+    }).join('');
+
+    methodologyBlock = `
+      <details class="methodology" data-reveal>
+        <summary>How this score is calculated</summary>
+        <div class="methodology-body">
+          <p class="methodology-note">Each criterion is scored against the band below it best matches. The awarded band is boxed. Scores are summed (max 8) and rescaled to a /10 total.</p>
+          <div class="methodology-scroll">
+            <table class="methodology-table">
+              <thead><tr><th></th><th>2.0</th><th>1.5</th><th>1.0</th><th>0.5</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          <p class="methodology-note">${escape(rubric.excluded_note)}</p>
+        </div>
+      </details>`;
+  }
+
   const scoreBlock = (d.score !== null && d.score !== undefined) ? `
     <div class="score-card" data-reveal>
       <div class="score-ring" style="--pct:${(d.score / 10 * 100).toFixed(0)}">
@@ -340,7 +385,8 @@ function renderResults(d) {
       <div class="score-reason">${escape(d.score_reason || '')}</div>
     </div>
     ${criteriaRows}
-    ${feedbackBlock}` : '';
+    ${feedbackBlock}
+    ${methodologyBlock}` : '';
 
   results.innerHTML = `
     <div style="margin-top: 48px;">
