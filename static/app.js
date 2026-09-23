@@ -360,16 +360,14 @@ async function renderResults(d) {
 
     methodologyBlock = `
       <details class="methodology" data-reveal>
-        <summary>How this score is calculated</summary>
+        <summary>How this score was calculated</summary>
         <div class="methodology-body">
-          <p class="methodology-note">Each criterion is scored against the band below it best matches. The awarded band is boxed. Scores are summed (max 8) and rescaled to a /10 total.</p>
           <div class="methodology-scroll">
             <table class="methodology-table">
               <thead><tr><th></th><th>2.0</th><th>1.5</th><th>1.0</th><th>0.5</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
-          <p class="methodology-note">${escape(rubric.excluded_note)}</p>
         </div>
       </details>`;
   }
