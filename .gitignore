@@ -1,6 +1,6 @@
-myenv
-__pycache__
-audio_uploads
+myenv/
+__pycache__/
+audio_uploads/
 speaking_coach.db
 speaking_coach_old_schema_backup.db
 speaking_coach.db-shm
