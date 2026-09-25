@@ -141,7 +141,7 @@ SessionLocal = sessionmaker(bind=engine)
 # "small" is accurate but slow on CPU. Override with WHISPER_MODEL=base.en or
 # tiny.en for a large speed boost (English-only models also skip language
 # detection). See the "why is this slow" notes near analyze_audio().
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "large-v3")
 
 # GPU acceleration: Whisper runs dramatically faster on an NVIDIA GPU via
 # CUDA (often 5-10x). Auto-detects if a CUDA-capable GPU + the right PyTorch
@@ -188,17 +188,14 @@ print("Configuring Ollama client...")
 # server, called directly via urllib below. No API key needed since nothing
 # leaves this machine.
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "deepseek-r1:14b")
-# DeepSeek-R1 is a REASONING model: it "thinks" step by step (wrapped in
-# <think>...</think> tags - see _strip_thinking below) before producing its
-# actual answer, even in JSON mode. That thinking pass adds real time on top
-# of normal generation, so this needs more headroom than a plain instruct
-# model like Qwen - raise this further if you see timeouts on your hardware.
-OLLAMA_TIMEOUT_SEC = float(os.environ.get("OLLAMA_TIMEOUT_SEC", "180"))
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:14b")
+# Local generation is much slower than a hosted API (~25s observed for the
+# 14b model on this rubric prompt) - give it real headroom before timing out.
+OLLAMA_TIMEOUT_SEC = float(os.environ.get("OLLAMA_TIMEOUT_SEC", "120"))
 # Local review is required (see _run_ollama_review) - these control how hard
 # it retries before finally giving up and failing the request.
 OLLAMA_MAX_RETRIES = int(os.environ.get("OLLAMA_MAX_RETRIES", "3"))
-OLLAMA_RETRY_BASE_SEC = float(os.environ.get("OLLAMA_RETRY_BASE_SEC", "3"))
+OLLAMA_RETRY_BASE_SEC = float(os.environ.get("OLLAMA_RETRY_BASE_SEC", "2"))
 print("Ready.")
 
 
@@ -280,6 +277,38 @@ using the exact band definitions below - do not invent your own criteria or
 scale.
 
 """ + _build_rubric_prompt_section() + """
+
+
+CALIBRATION GUIDANCE - apply each of these before finalizing any band:
+
+- Before awarding Fluency 2.0 or 1.5 (both require "without repetition" or
+  only "occasional repetition"), scan the transcript for any word or short
+  phrase that appears three or more times. If the same word or phrase
+  recurs throughout - not just once incidentally - that is frequent
+  repetition and caps the band at 1.0, regardless of pause data alone.
+
+- "On-topic" is not the same as "coherent." A response that jumps between
+  disconnected statements with no logical connectors linking them - even
+  if every sentence is individually on the general subject - is a
+  coherence breakdown (0.5 or 1.0 on Content Relevancy & Coherence), not
+  merely "ideas a bit limited" (1.5). Reserve 1.5 for a response that is
+  underdeveloped but still follows a logical thread, not one that is
+  fragmented or disjointed.
+
+- For Accuracy & Pronunciation, check whether each sentence is
+  semantically well-formed, not only whether it is grammatically
+  parseable. A sentence that is grammatically simple but does not
+  actually convey a sensible meaning (mismatched or nonsensical word
+  combinations) is a more serious error than a minor grammar slip, and
+  must not receive 2.0 or 1.5.
+
+- Before finalizing any band, re-read that exact band's description one
+  clause at a time and verify each individual claim in it is actually
+  true of this specific response. If any clause is false, that band is
+  wrong - move to the next band down.
+
+- When genuinely torn between two adjacent bands, choose the lower
+  (stricter) one. A formal assessment does not round up.
 
 ("Confidence and Body Language" is part of the full rubric but requires video
 - eye contact, gestures, posture - which is not available from audio. Do not
@@ -420,83 +449,15 @@ CRITERIA_KEYS = ("content_coherence", "fluency", "accuracy_pronunciation", "expr
 VALID_BANDS = {2.0, 1.5, 1.0, 0.5}
 
 
-def _extract_json_object(text: str) -> str:
-    """Finds and returns the first complete, balanced {...} object in text.
-
-    Without format="json" constraining the API response (removed above -
-    see _call_ollama), the model is free to add stray commentary before or
-    after the JSON ("Here is my evaluation:" / trailing notes), not just
-    the <think> block _strip_thinking already handles. This scans from the
-    first '{' and tracks brace depth (respecting quoted strings, so a '{'
-    or '}' inside a string value doesn't miscount) to find exactly where
-    the JSON object actually ends, rather than assuming the whole remaining
-    text is clean JSON."""
-    start = text.find("{")
-    if start == -1:
-        return text  # let json.loads raise its own clear error
-
-    depth = 0
-    in_string = False
-    escape = False
-    for i in range(start, len(text)):
-        ch = text[i]
-        if escape:
-            escape = False
-            continue
-        if ch == "\\":
-            escape = True
-            continue
-        if ch == '"':
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start:i + 1]
-
-    return text[start:]  # unbalanced (likely truncated) - return what we have
-
-
-def _strip_thinking(raw_text: str) -> str:
-    """DeepSeek-R1 writes its reasoning inside <think>...</think> tags before
-    the actual JSON answer, even with format="json" set - that setting
-    constrains the FINAL output to be valid JSON, but doesn't stop the model
-    from emitting the thinking block first as plain text ahead of it. Left
-    in, every response fails json.loads() immediately. This strips
-    everything up to and including the closing </think> tag, or - if the
-    tag was left unclosed by a truncated/odd response - falls back to
-    finding the first '{' and starting from there instead."""
-    match = re.search(r"</think>", raw_text, flags=re.IGNORECASE)
-    if match:
-        return raw_text[match.end():].strip()
-    # No closing tag found - salvage by jumping to the first '{', which is
-    # where the actual JSON object almost certainly starts.
-    brace_idx = raw_text.find("{")
-    if brace_idx != -1:
-        return raw_text[brace_idx:].strip()
-    return raw_text.strip()
-
-
 def _call_ollama(prompt: str) -> str:
-    """POSTs to Ollama's /api/generate WITHOUT format="json".
-
-    That setting works well for a plain instruct model (see ollama_main.py),
-    but for a REASONING model like DeepSeek-R1 it backfires: forcing the API
-    to constrain output to strict JSON fights against how the model was
-    trained to think at length first, and in testing it caused DeepSeek to
-    skip real per-criterion analysis and fall back to a generic, uniform
-    1.0 on every single criterion - a "safe middle" answer that isn't
-    actually reasoning about the transcript at all. Letting it think freely
-    (no format constraint) and extracting the JSON ourselves afterward (see
-    _extract_json_object) preserves the actual reasoning quality that's the
-    whole point of using this model."""
+    """POSTs to Ollama's /api/generate with format="json" to FORCE valid
+    JSON output - this is the key setting that made the difference in
+    testing: `ollama run`'s interactive chat mode ignored our schema
+    entirely and wrote its own free-form markdown rubric instead."""
     payload = json.dumps({
         "model": OLLAMA_MODEL,
         "prompt": prompt,
+        "format": "json",
         "stream": False,
         "options": {"temperature": 0.2},  # lower = more consistent band scoring
     }).encode("utf-8")
@@ -535,8 +496,7 @@ def _run_ollama_review(transcript: str, wpm: float, filler_count: int, long_paus
     version — retries with backoff, then raises loudly rather than shipping
     a session with half its review missing. Fewer retries than the Claude
     version by default (OLLAMA_MAX_RETRIES=3) since local generation is slow
-    (reasoning models like this run noticeably slower than a plain instruct
-    model of the same size, due to the thinking pass) and a failure here is far more
+    (~25s/attempt observed with qwen2.5:14b) and a failure here is far more
     genuine problem (model not pulled, malformed JSON) than the transient
     network blips retries are meant to smooth over.
     """
@@ -554,9 +514,7 @@ def _run_ollama_review(transcript: str, wpm: float, filler_count: int, long_paus
     for attempt in range(1, OLLAMA_MAX_RETRIES + 1):
         try:
             raw_text = _call_ollama(prompt)
-            raw_text = _strip_thinking(raw_text)
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_text.strip()).strip()
-            raw = _extract_json_object(raw)
             parsed = json.loads(raw)
 
             corrected = parsed.get("corrected", transcript)
